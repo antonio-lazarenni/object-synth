@@ -7,6 +7,14 @@ enum MODE {
   PERFORMANCE = 'performance',
 }
 
+interface Zone {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+
 const sketch = (p: p5) => {
   let video: p5.Element;
   let sections: Array<{
@@ -19,6 +27,8 @@ const sketch = (p: p5) => {
 
   const MIDI_CHANNEL = 1;
   let midiOutputs: Output[] = [];
+  // EDIT MODE
+  let isDragging = false;
 
   // Add UI elements
   let outputSelects: p5.Element[] = [];
@@ -29,6 +39,7 @@ const sketch = (p: p5) => {
   let WebcamCapture: p5.Element;
   let myVida: Vida;
   let activeZonesInput: p5.Element;
+  let zones: Zone[] = [];
   // Enable WebMidi at the start
   WebMidi.enable()
     .then(() => {
@@ -65,7 +76,7 @@ const sketch = (p: p5) => {
 
     // Add number type input for Active Zones
     p.createSpan('Active Zones: ').parent(controlsDiv);
-    activeZonesInput = p.createInput().attribute('type', 'number');
+    activeZonesInput = p.createInput('1').attribute('type', 'number');
     activeZonesInput.parent(controlsDiv);
     p.createElement('br').parent(controlsDiv);
 
@@ -136,6 +147,14 @@ const sketch = (p: p5) => {
     myVida.mirror = myVida.MIRROR_HORIZONTAL;
     myVida.handleActiveZonesFlag = true;
     myVida.setActiveZonesNormFillThreshold(0.5);
+    zones = Array.from({ length: Number(activeZonesInput.value()) }, (_, i) => ({
+      id: i,
+      x: 0,
+      y: 0,
+      w: 100,
+      h: 100,
+    }));
+    
     p.frameRate(30); 
   };
 
@@ -147,6 +166,27 @@ const sketch = (p: p5) => {
   //   }
   // };
 
+  p.mousePressed = () => {
+    if (isMouseInsideRect()) {
+      isDragging = true;
+    }
+  };
+
+  p.mouseReleased = () => {
+    isDragging = false;
+    console.log('deburger', zones);
+    
+  };
+  
+  function isMouseInsideRect() {
+    return zones.some((zone) => {
+      return p.mouseX > zone.x &&
+        p.mouseX < zone.x + zone.w &&
+        p.mouseY > zone.y &&
+        p.mouseY < zone.y + zone.h;
+    });
+  }
+
   p.draw = () => {
     p.background(220); // Important to be here
 
@@ -157,16 +197,21 @@ const sketch = (p: p5) => {
       myVida.drawActiveZones(0, 0, p.width, p.height);
       console.log('deburger', activeZonesInput.value());
     } else {
-
-      myVida.getActiveZone(0).isEnabledFlag = true;
-      // myVida.addActiveZone(
-      //   0,
-      //   0, 0, p.width, p.height,
-      //   () => {
-      //     console.log('deburger');
-      //   }
-      // );  
+      // EDIT MODE
       p.image(WebcamCapture, 0, 0, p.width, p.height);
+      
+      if (isDragging) {
+        zones.forEach((zone) => {
+          zone.x = p.mouseX - zone.w / 2;
+          zone.y = p.mouseY - zone.h / 2;
+        });
+      }
+
+      p.stroke("red");
+      p.noFill();
+      zones.forEach((zone) => {
+        p.rect(zone.x, zone.y, zone.w, zone.h);
+      });
     }
     // for (let particle of particles) {
     //   let gravity = p.createVector(0, 0.2);
