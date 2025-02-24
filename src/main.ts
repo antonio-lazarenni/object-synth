@@ -28,7 +28,7 @@ const sketch = (p: p5) => {
   let mode: MODE = MODE.EDIT;
   let WebcamCapture: p5.Element;
   let myVida: Vida;
-
+  let activeZonesInput: p5.Element;
   // Enable WebMidi at the start
   WebMidi.enable()
     .then(() => {
@@ -62,6 +62,13 @@ const sketch = (p: p5) => {
       outputSelects.push(select);
       p.createElement('br').parent(controlsDiv);
     }
+
+    // Add number type input for Active Zones
+    p.createSpan('Active Zones: ').parent(controlsDiv);
+    activeZonesInput = p.createInput().attribute('type', 'number');
+    activeZonesInput.parent(controlsDiv);
+    p.createElement('br').parent(controlsDiv);
+
 
     // Add threshold slider
     p.createSpan('Brightness Threshold: ').parent(controlsDiv);
@@ -144,10 +151,21 @@ const sketch = (p: p5) => {
     p.background(220); // Important to be here
 
     // Display video
-    if (mode === MODE.EDIT) {
+    if (mode === MODE.PERFORMANCE) {
       myVida.update(WebcamCapture);
       p.image(myVida.thresholdImage, 0, 0)
+      myVida.drawActiveZones(0, 0, p.width, p.height);
+      console.log('deburger', activeZonesInput.value());
     } else {
+
+      myVida.getActiveZone(0).isEnabledFlag = true;
+      // myVida.addActiveZone(
+      //   0,
+      //   0, 0, p.width, p.height,
+      //   () => {
+      //     console.log('deburger');
+      //   }
+      // );  
       p.image(WebcamCapture, 0, 0, p.width, p.height);
     }
     // for (let particle of particles) {
