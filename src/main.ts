@@ -82,21 +82,21 @@ const sketch = (p: p5) => {
     activeZonesInput.input(() => {
       const newCount = Number(activeZonesInput.value());
       if (newCount > 0) {
-        // Keep existing zones' positions and dimensions
         const existingZones = [...zones];
         zones = Array.from({ length: newCount }, (_, i) => {
-          // If there's an existing zone at this index, use its properties
           if (i < existingZones.length) {
             return existingZones[i];
           }
-          // Otherwise create a new zone with default values
           return {
-            x: p.random(0, p.width - 100), // Random x position
-            y: p.random(0, p.height - 100), // Random y position
+            x: p.random(0, p.width - 100),
+            y: p.random(0, p.height - 100),
             w: 100,
             h: 100
           };
         });
+        if (mode === MODE.PERFORMANCE) {
+          updateVidaActiveZones();
+        }
       }
     });
     p.createElement('br').parent(controlsDiv);
@@ -121,6 +121,9 @@ const sketch = (p: p5) => {
     modesRadio.parent(controlsDiv);
     modesRadio.changed(() => {
       mode = modesRadio.value() as MODE;
+      if (mode === MODE.PERFORMANCE) {
+        updateVidaActiveZones();
+      }
     });
   };
 
@@ -204,6 +207,9 @@ const sketch = (p: p5) => {
   p.mouseReleased = () => {
     isDragging = false;
     draggedZoneIndex = null;
+    if (mode === MODE.PERFORMANCE) {
+      updateVidaActiveZones();
+    }
   };
   
   p.draw = () => {
@@ -295,6 +301,35 @@ const sketch = (p: p5) => {
       );
     });
   };
+
+  function updateVidaActiveZones() {
+    // Clear existing active zones
+    myVida.activeZones = [];
+    
+    // Add new active zones based on current rectangles
+    zones.forEach((zone, index) => {
+      // Convert screen coordinates to normalized coordinates (0-1)
+      const normX = zone.x / p.width;
+      const normY = zone.y / p.height;
+      const normW = zone.w / p.width;
+      const normH = zone.h / p.height;
+      
+      myVida.addActiveZone(
+        index,  // zone id
+        normX,  // normalized x
+        normY,  // normalized y
+        normW,  // normalized width
+        normH,  // normalized height
+        (zone) => {
+          // Callback when zone activity changes
+          if (zone.isMovementDetectedFlag) {
+            console.log(`Movement detected in zone ${zone.id}`);
+            // Here you can add MIDI triggering logic
+          }
+        }
+      );
+    });
+  }
 };
 
 // Create P5 instance
