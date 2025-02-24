@@ -29,6 +29,7 @@ const sketch = (p: p5) => {
   let midiOutputs: Output[] = [];
   // EDIT MODE
   let isDragging = false;
+  let draggedZoneIndex: number | null = null;
 
   // Add UI elements
   let outputSelects: p5.Element[] = [];
@@ -78,6 +79,26 @@ const sketch = (p: p5) => {
     p.createSpan('Active Zones: ').parent(controlsDiv);
     activeZonesInput = p.createInput('1').attribute('type', 'number');
     activeZonesInput.parent(controlsDiv);
+    activeZonesInput.input(() => {
+      const newCount = Number(activeZonesInput.value());
+      if (newCount > 0) {
+        // Keep existing zones' positions and dimensions
+        const existingZones = [...zones];
+        zones = Array.from({ length: newCount }, (_, i) => {
+          // If there's an existing zone at this index, use its properties
+          if (i < existingZones.length) {
+            return existingZones[i];
+          }
+          // Otherwise create a new zone with default values
+          return {
+            x: p.random(0, p.width - 100), // Random x position
+            y: p.random(0, p.height - 100), // Random y position
+            w: 100,
+            h: 100
+          };
+        });
+      }
+    });
     p.createElement('br').parent(controlsDiv);
 
 
@@ -167,26 +188,24 @@ const sketch = (p: p5) => {
   // };
 
   p.mousePressed = () => {
-    if (isMouseInsideRect()) {
+    const hoveredIndex = zones.findIndex((zone) => 
+      p.mouseX > zone.x &&
+      p.mouseX < zone.x + zone.w &&
+      p.mouseY > zone.y &&
+      p.mouseY < zone.y + zone.h
+    );
+    
+    if (hoveredIndex !== -1) {
       isDragging = true;
+      draggedZoneIndex = hoveredIndex;
     }
   };
 
   p.mouseReleased = () => {
     isDragging = false;
-    console.log('deburger', zones);
-    
+    draggedZoneIndex = null;
   };
   
-  function isMouseInsideRect() {
-    return zones.some((zone) => {
-      return p.mouseX > zone.x &&
-        p.mouseX < zone.x + zone.w &&
-        p.mouseY > zone.y &&
-        p.mouseY < zone.y + zone.h;
-    });
-  }
-
   p.draw = () => {
     p.background(220); // Important to be here
 
@@ -200,11 +219,9 @@ const sketch = (p: p5) => {
       // EDIT MODE
       p.image(WebcamCapture, 0, 0, p.width, p.height);
       
-      if (isDragging) {
-        zones.forEach((zone) => {
-          zone.x = p.mouseX - zone.w / 2;
-          zone.y = p.mouseY - zone.h / 2;
-        });
+      if (isDragging && draggedZoneIndex !== null) {
+        zones[draggedZoneIndex].x = p.mouseX - zones[draggedZoneIndex].w / 2;
+        zones[draggedZoneIndex].y = p.mouseY - zones[draggedZoneIndex].h / 2;
       }
 
       p.stroke("red");
