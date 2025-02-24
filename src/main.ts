@@ -1,6 +1,11 @@
 import p5 from 'p5';
 import { WebMidi, Output } from 'webmidi';
 import Particle from './Particle';
+import Vida from './vida';
+enum MODE {
+  EDIT = 'edit',
+  PERFORMANCE = 'performance',
+}
 
 const sketch = (p: p5) => {
   let video: p5.Element;
@@ -11,6 +16,7 @@ const sketch = (p: p5) => {
     h: number;
     midiNote: number;
   }> = [];
+
   const MIDI_CHANNEL = 1;
   let midiOutputs: Output[] = [];
 
@@ -19,6 +25,10 @@ const sketch = (p: p5) => {
   let thresholdSlider: p5.Element;
   let baseNoteSlider: p5.Element;
   let particles: Particle[] = [];
+  let mode: MODE = MODE.EDIT;
+  let WebcamCapture: p5.Element;
+  let myVida: Vida;
+
   // Enable WebMidi at the start
   WebMidi.enable()
     .then(() => {
@@ -35,9 +45,6 @@ const sketch = (p: p5) => {
   const createUIControls = () => {
     // Create container div for controls
     const controlsDiv = p.createDiv();
-    controlsDiv.style('position', 'absolute');
-    controlsDiv.style('top', '10px');
-    controlsDiv.style('left', '10px');
     controlsDiv.style('background', 'rgba(0,0,0,0.7)');
     controlsDiv.style('padding', '10px');
     controlsDiv.style('border-radius', '5px');
@@ -66,7 +73,34 @@ const sketch = (p: p5) => {
     p.createSpan('Base MIDI Note: ').parent(controlsDiv);
     baseNoteSlider = p.createSlider(0, 127, 60);
     baseNoteSlider.parent(controlsDiv);
+    p.createElement('br').parent(controlsDiv);
+
+    const modesRadio = p.createRadio();
+    modesRadio.option('edit', 'Edit mode');
+    modesRadio.option('performance', 'Performance mode');
+    modesRadio.selected('edit');
+    modesRadio.parent(controlsDiv);
+    modesRadio.changed(() => {
+      mode = modesRadio.value() as MODE;
+    });
   };
+
+  function initCaptureDevice() {
+    try {
+      WebcamCapture = p.createCapture(p.VIDEO);
+      WebcamCapture.size(640, 480);
+      WebcamCapture.hide();
+      WebcamCapture.volume(0);
+      console.log('deburger', p.VIDEO);
+      
+
+      console.log(
+        `[initCaptureDevice] capture ready. Resolution: ${WebcamCapture.width}x${WebcamCapture.height}`
+      );
+    } catch (_err) {
+      console.log(`[initCaptureDevice] capture error: ${_err}`);
+    }
+  }
 
   const updateMidiOutputs = () => {
     midiOutputs = outputSelects
@@ -84,54 +118,52 @@ const sketch = (p: p5) => {
     p.createCanvas(640, 480);
 
     // Initialize webcam
-    video = p.createCapture(p5.VIDEO);
-    video.size(640, 480);
-    video.hide();
-    (video as any).volume(0);
-    
+    initCaptureDevice();
 
-    // Create 4 sections
-    for (let i = 0; i < 4; i++) {
-      sections.push({
-        x: ((i % 2) * p.width) / 2,
-        y: (Math.floor(i / 2) * p.height) / 2,
-        w: p.width / 2,
-        h: p.height / 2,
-        midiNote: 60 + i,
-      });
-    }
+    // Initialize VIDA
+    myVida = new Vida(p); // Create the instance using p5.vida
+    myVida.progressiveBackgroundFlag = true;
+    myVida.imageFilterThreshold = 0.2;
+    myVida.handleActiveZonesFlag = true;
+    myVida.setActiveZonesNormFillThreshold(0.02);
+    myVida.mirror = myVida.MIRROR_HORIZONTAL;
+    myVida.handleActiveZonesFlag = true;
+    myVida.setActiveZonesNormFillThreshold(0.5);
+    p.frameRate(30); 
   };
 
-  p.mousePressed = () => {
-    if (midiOutputs.length > 0) {
-      const instrument = p.width / 2 > p.mouseX ? midiOutputs[0] : midiOutputs[1];
-      const particle = new Particle(p.mouseX, p.mouseY, p, instrument);
-      particles.push(particle);
-    }
-  };
+  // p.mousePressed = () => {
+  //   if (midiOutputs.length > 0) {
+  //     const instrument = p.width / 2 > p.mouseX ? midiOutputs[0] : midiOutputs[1];
+  //     const particle = new Particle(p.mouseX, p.mouseY, 10, p, instrument);
+  //     particles.push(particle);
+  //   }
+  // };
 
   p.draw = () => {
+    p.background(220); // Important to be here
+
     // Display video
-    p.image(video as any, 0, 0, p.width, p.height);
-    
-    // Apply threshold filter
-    p.filter(p.THRESHOLD, thresholdSlider.value() / 255);
-    
-    p.background(220);
-    for (let particle of particles) {
-      let gravity = p.createVector(0, 0.2);
-      particle.applyForce(gravity);
-      particle.update();
-      particle.show();
-      particle.edges();
+    if (mode === MODE.EDIT) {
+      myVida.update(WebcamCapture);
+      p.image(myVida.thresholdImage, 0, 0)
+    } else {
+      p.image(WebcamCapture, 0, 0, p.width, p.height);
     }
-    for (let i = particles.length - 1; i >= 0; i--) {
-      if (particles[i].finished()) {
-        console.log('Particle finished');
-        particles.splice(i, 1);
-      }
-    }
-    return null;
+    // for (let particle of particles) {
+    //   let gravity = p.createVector(0, 0.2);
+    //   particle.applyForce(gravity);
+    //   particle.update();
+    //   particle.show();
+    //   particle.edges();
+    // }
+    // for (let i = particles.length - 1; i >= 0; i--) {
+    //   if (particles[i].finished()) {
+    //     console.log('Particle finished');
+    //     particles.splice(i, 1);
+    //   }
+    // }
+    return;
 
     // Update section analysis with new threshold
     sections.forEach((section, index) => {

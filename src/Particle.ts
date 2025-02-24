@@ -50,23 +50,23 @@ class Particle {
     this.lifetime -= 1;
 
     // Rate limit pitch bend messages
-    const currentTime = Date.now();
-    if (currentTime - this.lastPitchBendTime >= this.pitchBendInterval) {
-      const pitchBend = this.p.constrain(
-        this.p.map(this.pos.y, 0, this.p.height, 1, -1),
-        -1,
-        1
-      );
+    // const currentTime = Date.now();
+    // if (currentTime - this.lastPitchBendTime >= this.pitchBendInterval) {
+    //   const pitchBend = this.p.constrain(
+    //     this.p.map(this.pos.y, 0, this.p.height, 1, -1),
+    //     -1,
+    //     1
+    //   );
 
-      try {
-        if (this.output) {
-          this.output.sendPitchBend(pitchBend);
-          this.lastPitchBendTime = currentTime;
-        }
-      } catch (error) {
-        console.error('Error sending pitch bend:', pitchBend);
-      }
-    }
+    //   try {
+    //     if (this.output) {
+    //       this.output.sendPitchBend(pitchBend);
+    //       this.lastPitchBendTime = currentTime;
+    //     }
+    //   } catch (error) {
+    //     console.error('Error sending pitch bend:', pitchBend);
+    //   }
+    // }
 
     if (this.output) {
       this.midiNote.duration = 15;
