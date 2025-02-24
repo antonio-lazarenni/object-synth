@@ -230,10 +230,18 @@ const sketch = (p: p5) => {
         zones[draggedZoneIndex].y = p.mouseY - zones[draggedZoneIndex].h / 2;
       }
 
-      p.stroke("red");
-      p.noFill();
-      zones.forEach((zone) => {
+      zones.forEach((zone, index) => {
+        p.stroke("red");
+        p.noFill();
         p.rect(zone.x, zone.y, zone.w, zone.h);
+        
+        // Add text for ID
+        p.fill("red");
+        p.noStroke();
+        p.textAlign(p.CENTER, p.CENTER);
+        p.textSize(20);
+        p.text(index.toString(), zone.x + zone.w/2, zone.y + zone.h/2);
+        p.noFill(); // Reset fill for next rectangle
       });
     }
     // for (let particle of particles) {
