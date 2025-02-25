@@ -1,8 +1,9 @@
 import { defineConfig } from 'vite'
 
 export default defineConfig({
-  // ... existing code ...
+  base: '/object-synth/',
   build: {
+    outDir: 'dist',
     rollupOptions: {
       external: ['p5'],
       output: {
