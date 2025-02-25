@@ -12,6 +12,7 @@ interface Zone {
   y: number;
   w: number;
   h: number;
+  id: number;
 }
 
 const RESIZE_SPEED = 10;
@@ -56,6 +57,25 @@ const sketch = (p: p5) => {
     })
     .catch((err) => console.error('WebMidi could not be enabled:', err));
 
+  // Add functions to handle localStorage
+  const saveZonesToLocalStorage = () => {
+    localStorage.setItem('object-synth-zones', JSON.stringify(zones));
+  };
+
+  const loadZonesFromLocalStorage = (): Zone[] => {
+    const savedZones = localStorage.getItem('object-synth-zones');
+    if (savedZones) {
+      return JSON.parse(savedZones);
+    }
+    return Array.from({ length: Number(activeZonesInput?.value() || 1) }, (_, i) => ({
+      id: i,
+      x: 0,
+      y: 0,
+      w: 100,
+      h: 100,
+    }));
+  };
+
   const createUIControls = () => {
     // Create container div for controls
     const controlsDiv = p.createDiv();
@@ -90,6 +110,7 @@ const sketch = (p: p5) => {
             return existingZones[i];
           }
           return {
+            id: i,
             x: p.random(0, p.width - 100),
             y: p.random(0, p.height - 100),
             w: 100,
@@ -99,10 +120,38 @@ const sketch = (p: p5) => {
         if (mode === MODE.PERFORMANCE) {
           updateVidaActiveZones();
         }
+        // Save zones after changing count
+        saveZonesToLocalStorage();
       }
     });
     p.createElement('br').parent(controlsDiv);
 
+    // Add reset button
+    const resetButton = p.createButton('Reset Zones');
+    resetButton.parent(controlsDiv);
+    resetButton.style('margin', '10px 0');
+    resetButton.style('padding', '5px 10px');
+    resetButton.style('background-color', '#ff4444');
+    resetButton.style('color', 'white');
+    resetButton.style('border', 'none');
+    resetButton.style('border-radius', '3px');
+    resetButton.style('cursor', 'pointer');
+    resetButton.mousePressed(() => {
+      if (confirm('Are you sure you want to reset all zones to default?')) {
+        localStorage.removeItem('object-synth-zones');
+        zones = Array.from({ length: Number(activeZonesInput.value()) }, (_, i) => ({
+          id: i,
+          x: 0,
+          y: 0,
+          w: 100,
+          h: 100,
+        }));
+        if (mode === MODE.PERFORMANCE) {
+          updateVidaActiveZones();
+        }
+      }
+    });
+    p.createElement('br').parent(controlsDiv);
 
     // Add threshold slider
     p.createSpan('Brightness Threshold: ').parent(controlsDiv);
@@ -170,13 +219,9 @@ const sketch = (p: p5) => {
     myVida.setActiveZonesNormFillThreshold(0.02);
     myVida.handleActiveZonesFlag = true;
     myVida.setActiveZonesNormFillThreshold(0.5);
-    zones = Array.from({ length: Number(activeZonesInput.value()) }, (_, i) => ({
-      id: i,
-      x: 0,
-      y: 0,
-      w: 100,
-      h: 100,
-    }));
+    
+    // Load zones from localStorage instead of creating new ones
+    zones = loadZonesFromLocalStorage();
     
     p.frameRate(30); 
   };
@@ -210,6 +255,8 @@ const sketch = (p: p5) => {
     if (mode === MODE.PERFORMANCE) {
       updateVidaActiveZones();
     }
+    // Save zones after dragging
+    saveZonesToLocalStorage();
   };
   
   p.draw = () => {
@@ -345,7 +392,7 @@ const sketch = (p: p5) => {
     });
   }
 
-  // Add keyPressed handler after mouseReleased
+  // Update keyPressed to save zones after resizing
   p.keyPressed = () => {
     if (lastDraggedZoneIndex !== null) {
       switch (p.keyCode) {
@@ -365,6 +412,8 @@ const sketch = (p: p5) => {
       // Ensure minimum size
       zones[lastDraggedZoneIndex].w = Math.max(20, zones[lastDraggedZoneIndex].w);
       zones[lastDraggedZoneIndex].h = Math.max(20, zones[lastDraggedZoneIndex].h);
+      // Save zones after resizing
+      saveZonesToLocalStorage();
     }
   };
 };
