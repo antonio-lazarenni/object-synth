@@ -85,6 +85,8 @@ const sketch = (p: p5) => {
   // Add sound library state and types
   let soundLibrary: SoundFile[] = [];
   let soundPlayers: Map<string, HTMLAudioElement> = new Map();
+  let backgroundSound: HTMLAudioElement | null = null;
+  let backgroundSoundId: string | null = null;
 
   // Add IndexedDB setup
   const DB_NAME = 'soundLibraryDB';
@@ -436,6 +438,38 @@ const sketch = (p: p5) => {
     soundLibraryDiv.style('padding', '5px');
     soundLibraryDiv.style('background', 'rgba(255,255,255,0.1)');
 
+    // Add background sound selector
+    const bgSoundLabel = p.createSpan('Background Sound: ');
+    bgSoundLabel.parent(controlsDiv);
+    const bgSoundSelect = p.createSelect();
+    bgSoundSelect.option('None', '');
+    soundLibrary.forEach((sound) => {
+      bgSoundSelect.option(sound.name, sound.id);
+    });
+    if (backgroundSoundId) {
+      bgSoundSelect.selected(backgroundSoundId);
+    }
+    bgSoundSelect.changed(() => {
+      const soundId = bgSoundSelect.value() as string;
+      if (backgroundSound) {
+        backgroundSound.pause();
+        backgroundSound = null;
+        backgroundSoundId = null;
+      }
+      if (soundId) {
+        backgroundSoundId = soundId;
+        const audio = soundPlayers.get(soundId);
+        if (audio && mode === MODE.PERFORMANCE) {
+          backgroundSound = audio;
+          backgroundSound.loop = true;
+          backgroundSound.play();
+        }
+      }
+    });
+    bgSoundSelect.parent(controlsDiv);
+    p.createElement('br').parent(controlsDiv);
+
+
     // Add sound type to zone controls
     zones.forEach((zone, index) => {
       const soundSelect = p.createSelect();
@@ -691,6 +725,28 @@ const sketch = (p: p5) => {
         div.appendChild(deleteButton);
         container.appendChild(div);
       });
+    }
+
+    // Update background sound selector
+    const bgSoundSelect = document.querySelector('select') as HTMLSelectElement;
+    if (bgSoundSelect) {
+      // Clear existing options except "None"
+      while (bgSoundSelect.options.length > 1) {
+        bgSoundSelect.remove(1);
+      }
+      
+      // Add current sound library options
+      soundLibrary.forEach(sound => {
+        const option = document.createElement('option');
+        option.value = sound.id;
+        option.textContent = sound.name;
+        bgSoundSelect.appendChild(option);
+      });
+      
+      // Restore selection if possible
+      if (backgroundSoundId) {
+        bgSoundSelect.value = backgroundSoundId;
+      }
     }
   };
 
