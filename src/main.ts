@@ -1,6 +1,6 @@
 import p5 from 'p5';
 import { WebMidi, Output } from 'webmidi';
-import Particle from './Particle';
+// import Particle from './Particle';
 import Vida from './vida';
 enum MODE {
   EDIT = 'edit',
@@ -37,7 +37,7 @@ const sketch = (p: p5) => {
   let outputSelects: p5.Element[] = [];
   let thresholdSlider: p5.Element;
   let baseNoteSlider: p5.Element;
-  let particles: Particle[] = [];
+  // let particles: Particle[] = [];
   let mode: MODE = MODE.EDIT;
   let WebcamCapture: p5.Element;
   let myVida: Vida;
@@ -131,12 +131,10 @@ const sketch = (p: p5) => {
 
   function initCaptureDevice() {
     try {
-      WebcamCapture = p.createCapture(p.VIDEO);
+      WebcamCapture = p.createCapture('video');
       WebcamCapture.size(640, 480);
       WebcamCapture.hide();
       WebcamCapture.volume(0);
-      console.log('deburger', p.VIDEO);
-      
 
       console.log(
         `[initCaptureDevice] capture ready. Resolution: ${WebcamCapture.width}x${WebcamCapture.height}`

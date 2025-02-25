@@ -12,8 +12,8 @@ class Particle {
   midiNote: Note;
   isPlaying: boolean;
   output: Output;
-  private lastPitchBendTime: number = 0;
-  private pitchBendInterval: number = 50; // ms between pitch bend updates
+  // private lastPitchBendTime: number = 0;
+  // private pitchBendInterval: number = 50; // ms between pitch bend updates
   constructor(x: number, y: number, mass: number, p: p5, output: Output) {
     this.p = p;
     this.pos = p.createVector(x, y);

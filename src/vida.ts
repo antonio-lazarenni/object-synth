@@ -493,7 +493,7 @@ class Vida {
       this.resizeBlobMapArray(_image.width, _image.height);
     }
     if (this.__automaticPixelsDataTransferFlag) {
-      _image.loadPixels();
+      (_image as any).loadPixels();
       this.backgroundImage.loadPixels();
       this.differenceImage.loadPixels();
     }
@@ -609,7 +609,7 @@ class Vida {
       this.resizeBlobMapArray(_image.width, _image.height);
     }
     if (this.__automaticPixelsDataTransferFlag) {
-      _image.loadPixels();
+      (_image as any).loadPixels();
       this.backgroundImage.loadPixels();
       this.differenceImage.loadPixels();
     }
@@ -980,8 +980,8 @@ class Vida {
         temp_sin_angle = Math.sin(temp_angle);
         temp_cos_angle = Math.cos(temp_angle);
         for (var r = temp_radius_1; r >= 0; r--) {
-          temp_x = Math.floor(temp_center_x + r * temp_cos_angle);
-          temp_y = Math.floor(temp_center_y + r * temp_sin_angle);
+          temp_x = Math.floor(temp_center_x + r * temp_cos_angle) || 0;
+          temp_y = Math.floor(temp_center_y + r * temp_sin_angle) || 0;
           if (temp_x < 0) {
             temp_x = 0;
           } else {
@@ -1000,10 +1000,12 @@ class Vida {
           )
             break;
         }
-        this.__blobs[this.__currentBlobsLocation][i].approximatedPolygon[j] = {
-          normX: temp_x / this.thresholdImage.width,
-          normY: temp_y / this.thresholdImage.height,
-        };
+        if (typeof temp_x !== 'undefined' && typeof temp_y !== 'undefined') {
+          this.__blobs[this.__currentBlobsLocation][i].approximatedPolygon[j] = {
+            normX: temp_x / this.thresholdImage.width,
+            normY: temp_y / this.thresholdImage.height,
+          };
+        }
       }
     }
   }
