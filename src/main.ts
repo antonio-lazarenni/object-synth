@@ -56,15 +56,6 @@ interface FileSystemDirectoryHandle extends FileSystemHandle {
 }
 
 const sketch = (p: p5) => {
-  let video: p5.Element;
-  let sections: Array<{
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-    midiNote: number;
-  }> = [];
-
   const MIDI_CHANNEL = 1;
   let midiOutputs: Output[] = [];
   // EDIT MODE
@@ -276,7 +267,7 @@ const sketch = (p: p5) => {
 
     // Create dropdowns for each section
 
-    zones.forEach((zone, index) => {
+    zones.forEach((_zone, index) => {
       p.createSpan(`Zone ${index + 1}: `).parent(controlsDiv);
       const select = p.createSelect();
       select.option('None', '');
@@ -569,70 +560,6 @@ const sketch = (p: p5) => {
         p.noFill(); // Reset fill for next rectangle
       });
     }
-    // for (let particle of particles) {
-    //   let gravity = p.createVector(0, 0.2);
-    //   particle.applyForce(gravity);
-    //   particle.update();
-    //   particle.show();
-    //   particle.edges();
-    // }
-    // for (let i = particles.length - 1; i >= 0; i--) {
-    //   if (particles[i].finished()) {
-    //     console.log('Particle finished');
-    //     particles.splice(i, 1);
-    //   }
-    // }
-    return;
-
-    // Update section analysis with new threshold
-    sections.forEach((section, index) => {
-      let darkPixelCount = 0;
-      let totalPixels = 0;
-
-      // Scan pixels in this section
-      for (let x = section.x; x < section.x + section.w; x++) {
-        for (let y = section.y; y < section.y + section.h; y++) {
-          let idx = (y * p.width + x) * 4;
-          let brightness =
-            ((video as any).pixels[idx] +
-              (video as any).pixels[idx + 1] +
-              (video as any).pixels[idx + 2]) /
-            3;
-          if (brightness < Number(thresholdSlider.value())) {
-            darkPixelCount++;
-          }
-          totalPixels++;
-        }
-      }
-
-      // Calculate velocity (0-127 for MIDI)
-      let velocity = p.map(darkPixelCount / totalPixels, 0, 1, 0, 127);
-
-      // Update MIDI note based on base note
-      section.midiNote = Number(baseNoteSlider.value()) + index;
-
-      // Send to specific output if available
-      if (midiOutputs[index]) {
-        midiOutputs[index].send([
-          0x90 + MIDI_CHANNEL,
-          section.midiNote,
-          Math.floor(velocity),
-        ]);
-      }
-
-      // Draw section borders and info
-
-      p.noFill();
-      p.stroke(255);
-      p.rect(section.x, section.y, section.w, section.h);
-      p.fill(255);
-      p.noStroke();
-      p.text(
-        `Section ${index + 1}: ${Math.floor(velocity)}`,
-        section.x + 10,
-        section.y + 20
-      );
-    });
   };
 
   function updateVidaActiveZones() {
@@ -661,13 +588,14 @@ const sketch = (p: p5) => {
               playSound(zones[zone.id].soundId!);
             }
             // Here you can add MIDI triggering logic
-            console.log(`Zone ${zone.id} has soundId: ${zones[zone.id].soundId}`);
+            console.log(
+              `Zone ${zone.id} has soundId: ${zones[zone.id].soundId}`
+            );
             if (midiOutputs[zone.id]) {
-              midiOutputs[zone.id].send([
-                0x90 + MIDI_CHANNEL,
-                Math.floor(Math.random() * 127),
-                127,
-              ]);
+              midiOutputs[zone.id].send(
+                [0x90 + MIDI_CHANNEL, Math.floor(Math.random() * 127), 127],
+                { time: 10 }
+              );
             }
           }
         }
