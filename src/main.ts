@@ -29,6 +29,7 @@ interface Zone {
   id: number;
   type: ZONE_TYPE;
   soundId?: string;
+  pan?: number; // Add panning property
 }
 
 const RESIZE_SPEED = 10;
@@ -37,6 +38,14 @@ const RESIZE_SPEED = 10;
 declare global {
   interface Window {
     showDirectoryPicker(): Promise<FileSystemDirectoryHandle>;
+    audioContext?: AudioContext;
+    webkitAudioContext?: typeof AudioContext;
+  }
+  
+  // Extend HTMLAudioElement with our custom properties
+  interface HTMLAudioElement {
+    sourceNode?: MediaElementAudioSourceNode;
+    pannerNode?: StereoPannerNode;
   }
 }
 
@@ -476,6 +485,8 @@ const sketch = (p: p5) => {
     zones.forEach((zone, index) => {
       const soundSelect = p.createSelect();
       const label = p.createSpan(`Zone ${index}:`);
+      const panSlider = p.createSlider(-1, 1, zone.pan || 0, 0.1);
+      const panLabel = p.createSpan('Pan: ');
 
       soundSelect.option('No Sound', '');
       soundLibrary.forEach((sound) => {
@@ -488,8 +499,23 @@ const sketch = (p: p5) => {
         zones[index].soundId = soundSelect.value() as string;
         saveZonesToLocalStorage();
       });
+      
+      panSlider.input(() => {
+        zones[index].pan = panSlider.value() as number;
+        // Update panning for currently playing sound if applicable
+        if (zones[index].soundId) {
+          const audio = soundPlayers.get(zones[index].soundId);
+          if (audio) {
+            updateAudioPanning(audio, zones[index].pan);
+          }
+        }
+        saveZonesToLocalStorage();
+      });
+      
       label.parent(controlsDiv);
       soundSelect.parent(controlsDiv);
+      panLabel.parent(controlsDiv);
+      panSlider.parent(controlsDiv);
       p.createElement('br').parent(controlsDiv);
     });
   };
@@ -756,11 +782,52 @@ const sketch = (p: p5) => {
   const playSound = (soundId: string) => {
     const audio = soundPlayers.get(soundId);
     if (audio && audio.paused) {
+      // Find the zone this sound belongs to for panning
+      const zone = zones.find(z => z.soundId === soundId);
+      if (zone && zone.pan !== undefined) {
+        updateAudioPanning(audio, zone.pan);
+      }
       audio.play();
       // Add event listener to reset when finished
       audio.onended = () => {
         console.log(`Sound ${soundId} finished playing`);
       };
+    }
+  };
+
+  // Helper function to update audio panning
+  const updateAudioPanning = (audio: HTMLAudioElement, pan: number) => {
+    try {
+      // Create audio context if needed
+      if (!window.audioContext) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          window.audioContext = new AudioContextClass();
+        } else {
+          console.error('AudioContext not supported in this browser');
+          return;
+        }
+      }
+      
+      // Create or get audio source and panner
+      if (!audio.pannerNode) {
+        // Create media element source if needed
+        if (!audio.sourceNode) {
+          audio.sourceNode = window.audioContext.createMediaElementSource(audio);
+        }
+        
+        // Create panner node
+        audio.pannerNode = window.audioContext.createStereoPanner();
+        
+        // Connect nodes: source -> panner -> destination
+        audio.sourceNode.connect(audio.pannerNode);
+        audio.pannerNode.connect(window.audioContext.destination);
+      }
+      
+      // Set pan value (-1 = left, 0 = center, 1 = right)
+      audio.pannerNode.pan.value = pan;
+    } catch (err) {
+      console.error('Error setting audio panning:', err);
     }
   };
 
