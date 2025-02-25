@@ -7,12 +7,19 @@ enum MODE {
   PERFORMANCE = 'performance',
 }
 
+enum ZONE_TYPE {
+  DEFAULT = 'default',
+  MIDI = 'midi',
+  SOUND = 'sound',
+}
+
 interface Zone {
   x: number;
   y: number;
   w: number;
   h: number;
   id: number;
+  type: ZONE_TYPE;
 }
 
 const RESIZE_SPEED = 10;
@@ -48,10 +55,6 @@ const sketch = (p: p5) => {
   WebMidi.enable()
     .then(() => {
       console.log('WebMidi enabled!');
-
-      // Create UI controls after MIDI is enabled
-      createUIControls();
-
       // Update midiOutputs based on initial selection
       updateMidiOutputs();
     })
@@ -73,6 +76,7 @@ const sketch = (p: p5) => {
       y: 0,
       w: 100,
       h: 100,
+      type: ZONE_TYPE.DEFAULT,
     }));
   };
 
@@ -84,8 +88,9 @@ const sketch = (p: p5) => {
     controlsDiv.style('border-radius', '5px');
 
     // Create dropdowns for each section
-    for (let i = 0; i < 4; i++) {
-      p.createSpan(`Section ${i + 1}: `).parent(controlsDiv);
+
+    zones.forEach((zone, index) => {
+      p.createSpan(`Zone ${index + 1}: `).parent(controlsDiv);
       const select = p.createSelect();
       select.option('None', '');
       WebMidi.outputs.forEach((output) => {
@@ -95,11 +100,11 @@ const sketch = (p: p5) => {
       select.parent(controlsDiv);
       outputSelects.push(select);
       p.createElement('br').parent(controlsDiv);
-    }
+    });
 
     // Add number type input for Active Zones
     p.createSpan('Active Zones: ').parent(controlsDiv);
-    activeZonesInput = p.createInput('1').attribute('type', 'number');
+    activeZonesInput = p.createInput(zones.length.toString()).attribute('type', 'number');
     activeZonesInput.parent(controlsDiv);
     activeZonesInput.input(() => {
       const newCount = Number(activeZonesInput.value());
@@ -114,7 +119,8 @@ const sketch = (p: p5) => {
             x: p.random(0, p.width - 100),
             y: p.random(0, p.height - 100),
             w: 100,
-            h: 100
+            h: 100,
+            type: ZONE_TYPE.DEFAULT,
           };
         });
         if (mode === MODE.PERFORMANCE) {
@@ -139,13 +145,17 @@ const sketch = (p: p5) => {
     resetButton.mousePressed(() => {
       if (confirm('Are you sure you want to reset all zones to default?')) {
         localStorage.removeItem('object-synth-zones');
-        zones = Array.from({ length: Number(activeZonesInput.value()) }, (_, i) => ({
-          id: i,
-          x: 0,
-          y: 0,
-          w: 100,
-          h: 100,
-        }));
+        zones = Array.from(
+          { length: Number(activeZonesInput.value()) },
+          (_, i) => ({
+            id: i,
+            x: 0,
+            y: 0,
+            w: 100,
+            h: 100,
+            type: ZONE_TYPE.DEFAULT,
+          })
+        );
         if (mode === MODE.PERFORMANCE) {
           updateVidaActiveZones();
         }
@@ -207,9 +217,12 @@ const sketch = (p: p5) => {
 
   p.setup = () => {
     p.createCanvas(640, 480);
-
+    // Load zones from localStorage instead of creating new ones
+    zones = loadZonesFromLocalStorage();
     // Initialize webcam
     initCaptureDevice();
+    // Create UI controls after MIDI is enabled
+    createUIControls();
 
     // Initialize VIDA
     myVida = new Vida(p);
@@ -219,11 +232,8 @@ const sketch = (p: p5) => {
     myVida.setActiveZonesNormFillThreshold(0.02);
     myVida.handleActiveZonesFlag = true;
     myVida.setActiveZonesNormFillThreshold(0.5);
-    
-    // Load zones from localStorage instead of creating new ones
-    zones = loadZonesFromLocalStorage();
-    
-    p.frameRate(30); 
+
+    p.frameRate(30);
   };
 
   // p.mousePressed = () => {
@@ -235,13 +245,14 @@ const sketch = (p: p5) => {
   // };
 
   p.mousePressed = () => {
-    const hoveredIndex = zones.findIndex((zone) => 
-      p.mouseX > zone.x &&
-      p.mouseX < zone.x + zone.w &&
-      p.mouseY > zone.y &&
-      p.mouseY < zone.y + zone.h
+    const hoveredIndex = zones.findIndex(
+      (zone) =>
+        p.mouseX > zone.x &&
+        p.mouseX < zone.x + zone.w &&
+        p.mouseY > zone.y &&
+        p.mouseY < zone.y + zone.h
     );
-    
+
     if (hoveredIndex !== -1) {
       isDragging = true;
       draggedZoneIndex = hoveredIndex;
@@ -258,20 +269,20 @@ const sketch = (p: p5) => {
     // Save zones after dragging
     saveZonesToLocalStorage();
   };
-  
+
   p.draw = () => {
     p.background(220); // Important to be here
 
     // Display video
     if (mode === MODE.PERFORMANCE) {
       myVida.update(WebcamCapture);
-      p.image(myVida.thresholdImage, 0, 0)
+      p.image(myVida.thresholdImage, 0, 0);
       myVida.drawActiveZones(0, 0, p.width, p.height);
       console.log('deburger', activeZonesInput.value());
     } else {
       // EDIT MODE
       p.image(WebcamCapture, 0, 0, p.width, p.height);
-      
+
       if (isDragging && draggedZoneIndex !== null) {
         zones[draggedZoneIndex].x = p.mouseX - zones[draggedZoneIndex].w / 2;
         zones[draggedZoneIndex].y = p.mouseY - zones[draggedZoneIndex].h / 2;
@@ -280,20 +291,20 @@ const sketch = (p: p5) => {
       zones.forEach((zone, index) => {
         // Change stroke color based on whether this was the last dragged zone
         if (index === lastDraggedZoneIndex) {
-          p.stroke("#ADF802");
+          p.stroke('#ADF802');
         } else {
-          p.stroke("salmon");
+          p.stroke('salmon');
         }
         p.strokeWeight(2);
         p.noFill();
         p.rect(zone.x, zone.y, zone.w, zone.h);
-        
+
         // Add text for ID
-        p.fill(index === lastDraggedZoneIndex ? "green" : "red");
+        p.fill(index === lastDraggedZoneIndex ? 'green' : 'red');
         p.noStroke();
         p.textAlign(p.CENTER, p.CENTER);
         p.textSize(20);
-        p.text(index.toString(), zone.x + zone.w/2, zone.y + zone.h/2);
+        p.text(index.toString(), zone.x + zone.w / 2, zone.y + zone.h / 2);
         p.noFill(); // Reset fill for next rectangle
       });
     }
@@ -366,7 +377,7 @@ const sketch = (p: p5) => {
   function updateVidaActiveZones() {
     // Clear existing active zones
     myVida.activeZones = [];
-    
+
     // Add new active zones based on current rectangles
     zones.forEach((zone, index) => {
       // Convert screen coordinates to normalized coordinates (0-1)
@@ -374,13 +385,13 @@ const sketch = (p: p5) => {
       const normY = zone.y / p.height;
       const normW = zone.w / p.width;
       const normH = zone.h / p.height;
-      
+
       myVida.addActiveZone(
-        index,  // zone id
-        normX,  // normalized x
-        normY,  // normalized y
-        normW,  // normalized width
-        normH,  // normalized height
+        index, // zone id
+        normX, // normalized x
+        normY, // normalized y
+        normW, // normalized width
+        normH, // normalized height
         (zone) => {
           // Callback when zone activity changes
           if (zone.isMovementDetectedFlag) {
@@ -410,8 +421,14 @@ const sketch = (p: p5) => {
           break;
       }
       // Ensure minimum size
-      zones[lastDraggedZoneIndex].w = Math.max(20, zones[lastDraggedZoneIndex].w);
-      zones[lastDraggedZoneIndex].h = Math.max(20, zones[lastDraggedZoneIndex].h);
+      zones[lastDraggedZoneIndex].w = Math.max(
+        20,
+        zones[lastDraggedZoneIndex].w
+      );
+      zones[lastDraggedZoneIndex].h = Math.max(
+        20,
+        zones[lastDraggedZoneIndex].h
+      );
       // Save zones after resizing
       saveZonesToLocalStorage();
     }
