@@ -190,7 +190,9 @@ const sketch = (p: p5) => {
     const soundIndex = soundLibrary.findIndex((s) => s.id === soundId);
     if (soundIndex !== -1) {
       const sound = soundLibrary[soundIndex];
-      URL.revokeObjectURL(sound.url);
+      if (sound.url) {
+        URL.revokeObjectURL(sound.url);
+      }
       soundPlayers.get(soundId)?.pause();
       soundPlayers.delete(soundId);
       soundLibrary.splice(soundIndex, 1);
@@ -656,9 +658,17 @@ const sketch = (p: p5) => {
           if (zone.isMovementDetectedFlag) {
             console.log(`Movement detected in zone ${zone.id}`);
             if (zones[zone.id].soundId) {
-              playSound(zones[zone.id].soundId);
+              playSound(zones[zone.id].soundId!);
             }
             // Here you can add MIDI triggering logic
+            console.log(`Zone ${zone.id} has soundId: ${zones[zone.id].soundId}`);
+            if (midiOutputs[zone.id]) {
+              midiOutputs[zone.id].send([
+                0x90 + MIDI_CHANNEL,
+                Math.floor(Math.random() * 127),
+                127,
+              ]);
+            }
           }
         }
       );
