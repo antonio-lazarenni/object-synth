@@ -272,9 +272,7 @@ const sketch = (p: p5) => {
   const createUIControls = () => {
     // Create container div for controls
     const controlsDiv = p.createDiv();
-    controlsDiv.style('background', 'rgba(0,0,0,0.7)');
-    controlsDiv.style('padding', '10px');
-    controlsDiv.style('border-radius', '5px');
+    controlsDiv.class('controls-div');
 
     // Add number type input for Active Zones
     p.createSpan('Active Zones: ').parent(controlsDiv);
