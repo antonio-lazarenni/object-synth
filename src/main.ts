@@ -163,12 +163,11 @@ const sketch = (p: p5) => {
     initCaptureDevice();
 
     // Initialize VIDA
-    myVida = new Vida(p); // Create the instance using p5.vida
+    myVida = new Vida(p);
     myVida.progressiveBackgroundFlag = true;
     myVida.imageFilterThreshold = 0.2;
     myVida.handleActiveZonesFlag = true;
     myVida.setActiveZonesNormFillThreshold(0.02);
-    myVida.mirror = myVida.MIRROR_HORIZONTAL;
     myVida.handleActiveZonesFlag = true;
     myVida.setActiveZonesNormFillThreshold(0.5);
     zones = Array.from({ length: Number(activeZonesInput.value()) }, (_, i) => ({
@@ -234,10 +233,11 @@ const sketch = (p: p5) => {
       zones.forEach((zone, index) => {
         // Change stroke color based on whether this was the last dragged zone
         if (index === lastDraggedZoneIndex) {
-          p.stroke("green");
+          p.stroke("#ADF802");
         } else {
-          p.stroke("red");
+          p.stroke("salmon");
         }
+        p.strokeWeight(2);
         p.noFill();
         p.rect(zone.x, zone.y, zone.w, zone.h);
         
