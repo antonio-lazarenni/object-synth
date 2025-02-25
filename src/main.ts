@@ -13,6 +13,13 @@ enum ZONE_TYPE {
   SOUND = 'sound',
 }
 
+interface SoundFile {
+  id: string;
+  name: string;
+  file: File;
+  url: string;
+}
+
 interface Zone {
   x: number;
   y: number;
@@ -20,9 +27,32 @@ interface Zone {
   h: number;
   id: number;
   type: ZONE_TYPE;
+  soundId?: string;
 }
 
 const RESIZE_SPEED = 10;
+
+// Add FileSystem API types
+declare global {
+  interface Window {
+    showDirectoryPicker(): Promise<FileSystemDirectoryHandle>;
+  }
+}
+
+interface FileSystemHandle {
+  kind: 'file' | 'directory';
+  name: string;
+}
+
+interface FileSystemFileHandle extends FileSystemHandle {
+  kind: 'file';
+  getFile(): Promise<File>;
+}
+
+interface FileSystemDirectoryHandle extends FileSystemHandle {
+  kind: 'directory';
+  values(): AsyncIterableIterator<FileSystemHandle>;
+}
 
 const sketch = (p: p5) => {
   let video: p5.Element;
@@ -59,6 +89,10 @@ const sketch = (p: p5) => {
       updateMidiOutputs();
     })
     .catch((err) => console.error('WebMidi could not be enabled:', err));
+
+  // Add sound library state and types
+  let soundLibrary: SoundFile[] = [];
+  let soundPlayers: Map<string, HTMLAudioElement> = new Map();
 
   // Add functions to handle localStorage
   const saveZonesToLocalStorage = () => {
@@ -186,6 +220,81 @@ const sketch = (p: p5) => {
         updateVidaActiveZones();
       }
     });
+
+    // Add sound library section
+    p.createSpan('Sound Library').parent(controlsDiv);
+    p.createElement('br').parent(controlsDiv);
+    
+    // Create file input for individual sounds
+    const fileInput = p.createFileInput(handleFileUpload);
+    fileInput.parent(controlsDiv);
+    fileInput.attribute('accept', 'audio/*');
+    p.createElement('br').parent(controlsDiv);
+    
+    // Add directory selection button
+    const dirButton = p.createButton('Select Sounds Directory');
+    dirButton.parent(controlsDiv);
+    dirButton.style('margin', '10px 0');
+    dirButton.style('padding', '5px 10px');
+    dirButton.style('background-color', '#4CAF50');
+    dirButton.style('color', 'white');
+    dirButton.style('border', 'none');
+    dirButton.style('border-radius', '3px');
+    dirButton.style('cursor', 'pointer');
+    dirButton.mousePressed(async () => {
+      try {
+        if ('showDirectoryPicker' in window) {
+          const dirHandle = await window.showDirectoryPicker();
+          loadSoundsFromDirectory(dirHandle);
+        } else {
+          // Fallback for browsers that don't support directory picker
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.multiple = true;
+          input.webkitdirectory = true;
+          input.addEventListener('change', (e) => {
+            const files = (e.target as HTMLInputElement).files;
+            if (files) {
+              Array.from(files)
+                .filter(file => file.type.startsWith('audio/'))
+                .forEach(handleFileUpload);
+            }
+          });
+          input.click();
+        }
+      } catch (err) {
+        console.error('Error accessing directory:', err);
+        alert('Could not access directory. Please try again or use individual file upload.');
+      }
+    });
+    
+    // Create sound library container
+    const soundLibraryDiv = p.createDiv();
+    soundLibraryDiv.id('sound-library');
+    soundLibraryDiv.parent(controlsDiv);
+    soundLibraryDiv.style('max-height', '200px');
+    soundLibraryDiv.style('overflow-y', 'auto');
+    soundLibraryDiv.style('margin', '10px 0');
+    soundLibraryDiv.style('padding', '5px');
+    soundLibraryDiv.style('background', 'rgba(255,255,255,0.1)');
+
+    // Add sound type to zone controls
+    zones.forEach((zone, index) => {
+      const soundSelect = p.createSelect();
+      soundSelect.option('No Sound', '');
+      soundLibrary.forEach(sound => {
+        soundSelect.option(sound.name, sound.id);
+      });
+      if (zone.soundId) {
+        soundSelect.selected(zone.soundId);
+      }
+      soundSelect.changed(() => {
+        zones[index].soundId = soundSelect.value() as string;
+        saveZonesToLocalStorage();
+      });
+      soundSelect.parent(controlsDiv);
+      p.createElement('br').parent(controlsDiv);
+    });
   };
 
   function initCaptureDevice() {
@@ -236,14 +345,6 @@ const sketch = (p: p5) => {
     p.frameRate(30);
   };
 
-  // p.mousePressed = () => {
-  //   if (midiOutputs.length > 0) {
-  //     const instrument = p.width / 2 > p.mouseX ? midiOutputs[0] : midiOutputs[1];
-  //     const particle = new Particle(p.mouseX, p.mouseY, 10, p, instrument);
-  //     particles.push(particle);
-  //   }
-  // };
-
   p.mousePressed = () => {
     const hoveredIndex = zones.findIndex(
       (zone) =>
@@ -278,7 +379,6 @@ const sketch = (p: p5) => {
       myVida.update(WebcamCapture);
       p.image(myVida.thresholdImage, 0, 0);
       myVida.drawActiveZones(0, 0, p.width, p.height);
-      console.log('deburger', activeZonesInput.value());
     } else {
       // EDIT MODE
       p.image(WebcamCapture, 0, 0, p.width, p.height);
@@ -431,6 +531,127 @@ const sketch = (p: p5) => {
       );
       // Save zones after resizing
       saveZonesToLocalStorage();
+    }
+  };
+
+  // Add function to load sounds from directory
+  async function loadSoundsFromDirectory(dirHandle: FileSystemDirectoryHandle) {
+    try {
+      for await (const entry of dirHandle.values()) {
+        if (entry.kind === 'file') {
+          const fileHandle = entry as FileSystemFileHandle;
+          const file = await fileHandle.getFile();
+          if (file.type.startsWith('audio/')) {
+            handleFileUpload(file);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error reading directory:', err);
+      alert('Error reading directory. Some files may not have been loaded.');
+    }
+  }
+
+  // Add function to update sound library UI
+  const updateSoundLibraryUI = () => {
+    const container = document.getElementById('sound-library');
+    if (container) {
+      container.innerHTML = '';
+      soundLibrary.forEach(sound => {
+        const div = document.createElement('div');
+        div.className = 'sound-item';
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = sound.name;
+        
+        const playButton = document.createElement('button');
+        playButton.textContent = 'Play';
+        playButton.addEventListener('click', () => playSound(sound.id));
+        
+        const deleteButton = document.createElement('button');
+        deleteButton.textContent = 'Delete';
+        deleteButton.addEventListener('click', () => deleteSound(sound.id));
+        
+        div.appendChild(nameSpan);
+        div.appendChild(playButton);
+        div.appendChild(deleteButton);
+        container.appendChild(div);
+      });
+    }
+  };
+
+  // Add sound playback and deletion functions
+  const playSound = (soundId: string) => {
+    const audio = soundPlayers.get(soundId);
+    if (audio) {
+      audio.currentTime = 0; // Reset to start
+      audio.play();
+    }
+  };
+
+  const deleteSound = (soundId: string) => {
+    const soundIndex = soundLibrary.findIndex(s => s.id === soundId);
+    if (soundIndex !== -1) {
+      const sound = soundLibrary[soundIndex];
+      URL.revokeObjectURL(sound.url); // Clean up URL
+      soundPlayers.get(soundId)?.pause(); // Stop if playing
+      soundPlayers.delete(soundId);
+      soundLibrary.splice(soundIndex, 1);
+      updateSoundLibraryUI();
+    }
+  };
+
+  // Add function to handle file uploads
+  const handleFileUpload = async (file: File | p5.File) => {
+    const acceptedAudioTypes = [
+      'audio/mpeg',  // .mp3
+      'audio/mp3',   // some browsers use this
+      'audio/wav',   // .wav
+      'audio/ogg',   // .ogg
+      'audio/x-m4a', // .m4a
+      'audio/aac',   // .aac
+      'audio/mp4',   // some .m4a files
+      'audio'
+    ];
+
+    if (acceptedAudioTypes.includes(file.type) || file.name.toLowerCase().endsWith('.mp3')) {
+      const soundId = `sound-${Date.now()}`;
+      console.log('Processing file:', file);
+      
+      try {
+        // Handle both p5.File and regular File objects
+        const fileData = 'data' in file ? file.data : file;
+        const blob = new Blob([fileData], { type: file.type });
+        const url = URL.createObjectURL(blob);
+        
+        // Create and test audio element before adding to library
+        const audio = new Audio(url);
+        
+        // Only add to library if audio loads successfully
+        await new Promise((resolve, reject) => {
+          audio.addEventListener('loadeddata', resolve);
+          audio.addEventListener('error', reject);
+        });
+        
+        const sound: SoundFile = {
+          id: soundId,
+          name: file.name,
+          file: new File([blob], file.name, { type: file.type }),
+          url: url
+        };
+        
+        soundLibrary.push(sound);
+        soundPlayers.set(soundId, audio);
+        
+        // Update UI
+        updateSoundLibraryUI();
+      } catch (err) {
+        console.error('Error loading audio file:', err);
+        alert('Error loading audio file. Please try a different file.');
+      }
+    } else {
+      alert('Please upload audio files (supported formats: mp3, wav, ogg, m4a, aac)');
+      console.log('Attempted file type:', file.type);
     }
   };
 };
