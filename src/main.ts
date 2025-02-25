@@ -14,6 +14,7 @@ interface Zone {
   h: number;
 }
 
+const RESIZE_SPEED = 10;
 
 const sketch = (p: p5) => {
   let video: p5.Element;
@@ -30,6 +31,7 @@ const sketch = (p: p5) => {
   // EDIT MODE
   let isDragging = false;
   let draggedZoneIndex: number | null = null;
+  let lastDraggedZoneIndex: number | null = null;
 
   // Add UI elements
   let outputSelects: p5.Element[] = [];
@@ -201,6 +203,7 @@ const sketch = (p: p5) => {
     if (hoveredIndex !== -1) {
       isDragging = true;
       draggedZoneIndex = hoveredIndex;
+      lastDraggedZoneIndex = hoveredIndex;
     }
   };
 
@@ -231,12 +234,17 @@ const sketch = (p: p5) => {
       }
 
       zones.forEach((zone, index) => {
-        p.stroke("red");
+        // Change stroke color based on whether this was the last dragged zone
+        if (index === lastDraggedZoneIndex) {
+          p.stroke("green");
+        } else {
+          p.stroke("red");
+        }
         p.noFill();
         p.rect(zone.x, zone.y, zone.w, zone.h);
         
         // Add text for ID
-        p.fill("red");
+        p.fill(index === lastDraggedZoneIndex ? "green" : "red");
         p.noStroke();
         p.textAlign(p.CENTER, p.CENTER);
         p.textSize(20);
@@ -338,6 +346,29 @@ const sketch = (p: p5) => {
       );
     });
   }
+
+  // Add keyPressed handler after mouseReleased
+  p.keyPressed = () => {
+    if (lastDraggedZoneIndex !== null) {
+      switch (p.keyCode) {
+        case p.UP_ARROW:
+          zones[lastDraggedZoneIndex].h -= RESIZE_SPEED;
+          break;
+        case p.DOWN_ARROW:
+          zones[lastDraggedZoneIndex].h += RESIZE_SPEED;
+          break;
+        case p.LEFT_ARROW:
+          zones[lastDraggedZoneIndex].w -= RESIZE_SPEED;
+          break;
+        case p.RIGHT_ARROW:
+          zones[lastDraggedZoneIndex].w += RESIZE_SPEED;
+          break;
+      }
+      // Ensure minimum size
+      zones[lastDraggedZoneIndex].w = Math.max(20, zones[lastDraggedZoneIndex].w);
+      zones[lastDraggedZoneIndex].h = Math.max(20, zones[lastDraggedZoneIndex].h);
+    }
+  };
 };
 
 // Create P5 instance
