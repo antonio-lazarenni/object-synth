@@ -65,8 +65,8 @@ const sketch = (p: p5) => {
 
   // Add UI elements
   let outputSelects: p5.Element[] = [];
-  let thresholdSlider: p5.Element;
-  let baseNoteSlider: p5.Element;
+  // let thresholdSlider: p5.Element;
+  // let baseNoteSlider: p5.Element;
   // let particles: Particle[] = [];
   let mode: MODE = MODE.EDIT;
   let WebcamCapture: p5.Element;
@@ -176,6 +176,17 @@ const sketch = (p: p5) => {
     });
   };
 
+  const deleteAllSoundsFromDB = async () => {
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(['sounds'], 'readwrite');
+      const store = transaction.objectStore('sounds');
+      const request = store.clear();
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  };
+
   // Update deleteSound function to also remove from IndexedDB
   const deleteSound = async (soundId: string) => {
     const soundIndex = soundLibrary.findIndex((s) => s.id === soundId);
@@ -265,21 +276,6 @@ const sketch = (p: p5) => {
     controlsDiv.style('padding', '10px');
     controlsDiv.style('border-radius', '5px');
 
-    // Create dropdowns for each section
-
-    zones.forEach((_zone, index) => {
-      p.createSpan(`Zone ${index + 1}: `).parent(controlsDiv);
-      const select = p.createSelect();
-      select.option('None', '');
-      WebMidi.outputs.forEach((output) => {
-        select.option(output.name, output.name);
-      });
-      select.changed(() => updateMidiOutputs());
-      select.parent(controlsDiv);
-      outputSelects.push(select);
-      p.createElement('br').parent(controlsDiv);
-    });
-
     // Add number type input for Active Zones
     p.createSpan('Active Zones: ').parent(controlsDiv);
     activeZonesInput = p
@@ -312,6 +308,20 @@ const sketch = (p: p5) => {
     });
     p.createElement('br').parent(controlsDiv);
 
+    // // Create dropdowns for each section
+    // zones.forEach((_zone, index) => {
+    //   p.createSpan(`Zone ${index + 1}: `).parent(controlsDiv);
+    //   const select = p.createSelect();
+    //   select.option('None', '');
+    //   WebMidi.outputs.forEach((output) => {
+    //     select.option(output.name, output.name);
+    //   });
+    //   select.changed(() => updateMidiOutputs());
+    //   select.parent(controlsDiv);
+    //   outputSelects.push(select);
+    //   p.createElement('br').parent(controlsDiv);
+    // });
+
     // Add reset button
     const resetButton = p.createButton('Reset Zones');
     resetButton.parent(controlsDiv);
@@ -343,18 +353,6 @@ const sketch = (p: p5) => {
     });
     p.createElement('br').parent(controlsDiv);
 
-    // Add threshold slider
-    p.createSpan('Brightness Threshold: ').parent(controlsDiv);
-    thresholdSlider = p.createSlider(0, 255, 128);
-    thresholdSlider.parent(controlsDiv);
-    p.createElement('br').parent(controlsDiv);
-
-    // Add base note slider
-    p.createSpan('Base MIDI Note: ').parent(controlsDiv);
-    baseNoteSlider = p.createSlider(0, 127, 60);
-    baseNoteSlider.parent(controlsDiv);
-    p.createElement('br').parent(controlsDiv);
-
     const modesRadio = p.createRadio();
     modesRadio.option('edit', 'Edit mode');
     modesRadio.option('performance', 'Performance mode');
@@ -369,12 +367,6 @@ const sketch = (p: p5) => {
 
     // Add sound library section
     p.createSpan('Sound Library').parent(controlsDiv);
-    p.createElement('br').parent(controlsDiv);
-
-    // Create file input for individual sounds
-    const fileInput = p.createFileInput(handleFileUpload);
-    fileInput.parent(controlsDiv);
-    fileInput.attribute('accept', 'audio/*');
     p.createElement('br').parent(controlsDiv);
 
     // Add directory selection button
@@ -413,6 +405,26 @@ const sketch = (p: p5) => {
         alert(
           'Could not access directory. Please try again or use individual file upload.'
         );
+      }
+    });
+
+    const resetSoundButton = p.createButton('Reset Sound Library');
+    resetSoundButton.parent(controlsDiv);
+    resetSoundButton.style('margin', '10px 0');
+    resetSoundButton.style('padding', '5px 10px');
+    resetSoundButton.style('background-color', 'red');
+    resetSoundButton.style('color', 'white');
+    resetSoundButton.style('border', 'none');
+    resetSoundButton.style('border-radius', '3px');
+    resetSoundButton.style('cursor', 'pointer');
+    resetSoundButton.mousePressed(async () => {
+      try {
+        soundLibrary = [];
+        soundPlayers.clear();
+        await deleteAllSoundsFromDB();
+        updateSoundLibraryUI();
+      } catch (err) {
+        console.error('Error resetting sound library:', err);
       }
     });
 
@@ -485,6 +497,7 @@ const sketch = (p: p5) => {
     }
 
     createUIControls();
+    updateSoundLibraryUI();
 
     myVida = new Vida(p);
     myVida.progressiveBackgroundFlag = true;
