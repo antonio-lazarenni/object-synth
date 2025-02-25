@@ -441,6 +441,8 @@ const sketch = (p: p5) => {
     // Add sound type to zone controls
     zones.forEach((zone, index) => {
       const soundSelect = p.createSelect();
+      const label = p.createSpan(`Zone ${index}:`);
+
       soundSelect.option('No Sound', '');
       soundLibrary.forEach((sound) => {
         soundSelect.option(sound.name, sound.id);
@@ -452,6 +454,7 @@ const sketch = (p: p5) => {
         zones[index].soundId = soundSelect.value() as string;
         saveZonesToLocalStorage();
       });
+      label.parent(controlsDiv);
       soundSelect.parent(controlsDiv);
       p.createElement('br').parent(controlsDiv);
     });
@@ -696,9 +699,12 @@ const sketch = (p: p5) => {
   // Add sound playback and deletion functions
   const playSound = (soundId: string) => {
     const audio = soundPlayers.get(soundId);
-    if (audio) {
-      audio.currentTime = 0; // Reset to start
+    if (audio && audio.paused) {
       audio.play();
+      // Add event listener to reset when finished
+      audio.onended = () => {
+        console.log(`Sound ${soundId} finished playing`);
+      };
     }
   };
 
