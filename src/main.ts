@@ -466,7 +466,9 @@ const sketch = (p: p5) => {
         }
       }
     });
+    const bgSoundDescription = p.createSpan('Will play in a loop');
     bgSoundSelect.parent(controlsDiv);
+    bgSoundDescription.parent(controlsDiv);
     p.createElement('br').parent(controlsDiv);
 
 
