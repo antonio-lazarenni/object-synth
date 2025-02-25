@@ -13,7 +13,4 @@ export default defineConfig({
       }
     }
   },
-  optimizeDeps: {
-    include: ['p5']
-  }
 }) 
