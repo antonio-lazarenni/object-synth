@@ -30,6 +30,7 @@ interface Zone {
   type: ZONE_TYPE;
   soundId?: string;
   pan?: number; // Add panning property
+  volume?: number; // Add volume property
 }
 
 const RESIZE_SPEED = 10;
@@ -471,22 +472,47 @@ const sketch = (p: p5) => {
         if (audio && mode === MODE.PERFORMANCE) {
           backgroundSound = audio;
           backgroundSound.loop = true;
+          // Apply saved volume if available
+          if (localStorage.getItem('background-sound-volume')) {
+            backgroundSound.volume = parseFloat(localStorage.getItem('background-sound-volume') || '0.5');
+            bgVolumeSlider.value(backgroundSound.volume);
+          }
           backgroundSound.play();
         }
       }
     });
-    const bgSoundDescription = p.createSpan('Will play in a loop');
+    
+    // Add volume control for background sound
+    const bgVolumeLabel = p.createSpan('Background Volume: ');
+    const bgVolumeSlider = p.createSlider(0, 1, 0.5, 0.01);
+    
+    // Initialize with saved value if available
+    if (localStorage.getItem('background-sound-volume')) {
+      bgVolumeSlider.value(parseFloat(localStorage.getItem('background-sound-volume') || '0.5'));
+    }
+    
+    bgVolumeSlider.input(() => {
+      const volume = bgVolumeSlider.value() as number;
+      localStorage.setItem('background-sound-volume', volume.toString());
+      if (backgroundSound) {
+        backgroundSound.volume = volume;
+      }
+    });
+    
     bgSoundSelect.parent(controlsDiv);
-    bgSoundDescription.parent(controlsDiv);
+    bgVolumeLabel.parent(controlsDiv);
+    bgVolumeSlider.parent(controlsDiv);
     p.createElement('br').parent(controlsDiv);
-
-
+    p.createElement('br').parent(controlsDiv);
+    
     // Add sound type to zone controls
     zones.forEach((zone, index) => {
       const soundSelect = p.createSelect();
       const label = p.createSpan(`Zone ${index}:`);
       const panSlider = p.createSlider(-1, 1, zone.pan || 0, 0.1);
       const panLabel = p.createSpan('Pan: ');
+      const volumeSlider = p.createSlider(0, 1, zone.volume || 0.5, 0.01);
+      const volumeLabel = p.createSpan('Volume: ');
 
       soundSelect.option('No Sound', '');
       soundLibrary.forEach((sound) => {
@@ -512,10 +538,24 @@ const sketch = (p: p5) => {
         saveZonesToLocalStorage();
       });
       
+      volumeSlider.input(() => {
+        zones[index].volume = volumeSlider.value() as number;
+        // Update volume for currently playing sound if applicable
+        if (zones[index].soundId) {
+          const audio = soundPlayers.get(zones[index].soundId);
+          if (audio) {
+            audio.volume = zones[index].volume;
+          }
+        }
+        saveZonesToLocalStorage();
+      });
+      
       label.parent(controlsDiv);
       soundSelect.parent(controlsDiv);
       panLabel.parent(controlsDiv);
       panSlider.parent(controlsDiv);
+      volumeLabel.parent(controlsDiv);
+      volumeSlider.parent(controlsDiv);
       p.createElement('br').parent(controlsDiv);
     });
   };
@@ -784,8 +824,13 @@ const sketch = (p: p5) => {
     if (audio && audio.paused) {
       // Find the zone this sound belongs to for panning
       const zone = zones.find(z => z.soundId === soundId);
-      if (zone && zone.pan !== undefined) {
-        updateAudioPanning(audio, zone.pan);
+      if (zone) {
+        if (zone.pan !== undefined) {
+          updateAudioPanning(audio, zone.pan);
+        }
+        if (zone.volume !== undefined) {
+          audio.volume = zone.volume;
+        }
       }
       audio.play();
       // Add event listener to reset when finished
