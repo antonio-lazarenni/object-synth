@@ -1,5 +1,5 @@
 import p5 from 'p5';
-import { WebMidi, Output } from 'webmidi';
+// import { WebMidi, Output } from 'webmidi';
 // import Particle from './Particle';
 import Vida from './vida';
 enum MODE {
@@ -66,31 +66,33 @@ interface FileSystemDirectoryHandle extends FileSystemHandle {
 }
 
 const sketch = (p: p5) => {
-  const MIDI_CHANNEL = 1;
-  let midiOutputs: Output[] = [];
+  // const MIDI_CHANNEL = 1;
+  // let midiOutputs: Output[] = [];
   // EDIT MODE
   let isDragging = false;
   let draggedZoneIndex: number | null = null;
   let lastDraggedZoneIndex: number | null = null;
 
   // Add UI elements
-  let outputSelects: p5.Element[] = [];
+  // let outputSelects: p5.Element[] = [];
   // let thresholdSlider: p5.Element;
   // let baseNoteSlider: p5.Element;
   // let particles: Particle[] = [];
   let mode: MODE = MODE.EDIT;
   let WebcamCapture: p5.Element;
   let myVida: Vida;
+  let myVidaThreshold: number = parseFloat(localStorage.getItem('movement-threshold') || '0.02');
+  let imageFilterThreshold: number = parseFloat(localStorage.getItem('image-filter-threshold') || '0.3');
   let activeZonesInput: p5.Element;
   let zones: Zone[] = [];
   // Enable WebMidi at the start
-  WebMidi.enable()
-    .then(() => {
-      console.log('WebMidi enabled!');
-      // Update midiOutputs based on initial selection
-      updateMidiOutputs();
-    })
-    .catch((err) => console.error('WebMidi could not be enabled:', err));
+  // WebMidi.enable()
+  //   .then(() => {
+  //     console.log('WebMidi enabled!');
+  //     // Update midiOutputs based on initial selection
+  //     updateMidiOutputs();
+  //   })
+  //   .catch((err) => console.error('WebMidi could not be enabled:', err));
 
   // Add sound library state and types
   let soundLibrary: SoundFile[] = [];
@@ -569,6 +571,27 @@ const sketch = (p: p5) => {
       volumeSlider.parent(controlsDiv);
       p.createElement('br').parent(controlsDiv);
     });
+
+    // Add sliders for VIDA thresholds
+    p.createSpan('Image Filter Threshold: ').parent(controlsDiv);
+    const imageFilterSlider = p.createSlider(0, 1, imageFilterThreshold, 0.01);
+    imageFilterSlider.parent(controlsDiv);
+    imageFilterSlider.input(() => {
+      imageFilterThreshold = imageFilterSlider.value() as number;
+      localStorage.setItem('image-filter-threshold', imageFilterThreshold.toString());
+      updateVidaThresholds();
+    });
+    p.createElement('br').parent(controlsDiv);
+
+    p.createSpan('Movement Threshold: ').parent(controlsDiv);
+    const movementThresholdSlider = p.createSlider(0, 1, myVidaThreshold, 0.01);
+    movementThresholdSlider.parent(controlsDiv);
+    movementThresholdSlider.input(() => {
+      myVidaThreshold = movementThresholdSlider.value() as number;
+      localStorage.setItem('movement-threshold', myVidaThreshold.toString());
+      updateVidaThresholds();
+    });
+    p.createElement('br').parent(controlsDiv);
   };
 
   function initCaptureDevice() {
@@ -586,17 +609,17 @@ const sketch = (p: p5) => {
     }
   }
 
-  const updateMidiOutputs = () => {
-    midiOutputs = outputSelects
-      .map((select) =>
-        WebMidi.outputs.find((output) => output.name === select.value())
-      )
-      .filter((output): output is Output => output !== undefined);
-    console.log(
-      'Updated MIDI outputs:',
-      midiOutputs.map((out) => out.name)
-    );
-  };
+  // const updateMidiOutputs = () => {
+  //   midiOutputs = outputSelects
+  //     .map((select) =>
+  //       WebMidi.outputs.find((output) => output.name === select.value())
+  //     )
+  //     .filter((output): output is Output => output !== undefined);
+  //   console.log(
+  //     'Updated MIDI outputs:',
+  //     midiOutputs.map((out) => out.name)
+  //   );
+  // };
 
   p.setup = async () => {
     p.createCanvas(640, 480);
@@ -615,11 +638,9 @@ const sketch = (p: p5) => {
 
     myVida = new Vida(p);
     myVida.progressiveBackgroundFlag = true;
-    myVida.imageFilterThreshold = 0.2;
+    myVida.imageFilterThreshold = imageFilterThreshold;
     myVida.handleActiveZonesFlag = true;
-    myVida.setActiveZonesNormFillThreshold(0.02);
-    myVida.handleActiveZonesFlag = true;
-    myVida.setActiveZonesNormFillThreshold(0.5);
+    myVida.setActiveZonesNormFillThreshold(myVidaThreshold);
 
     p.frameRate(30);
   };
@@ -718,12 +739,12 @@ const sketch = (p: p5) => {
             console.log(
               `Zone ${zone.id} has soundId: ${zones[zone.id].soundId}`
             );
-            if (midiOutputs[zone.id]) {
-              midiOutputs[zone.id].send(
-                [0x90 + MIDI_CHANNEL, Math.floor(Math.random() * 127), 127],
-                { time: 10 }
-              );
-            }
+            // if (midiOutputs[zone.id]) {
+            //   midiOutputs[zone.id].send(
+            //     [0x90 + MIDI_CHANNEL, Math.floor(Math.random() * 127), 127],
+            //     { time: 10 }
+            //   );
+            // }
           }
         }
       );
@@ -908,6 +929,14 @@ const sketch = (p: p5) => {
         type: ZONE_TYPE.DEFAULT,
       })
     );
+  };
+
+  // Add function to update VIDA threshold settings
+  const updateVidaThresholds = () => {
+    if (myVida) {
+      myVida.imageFilterThreshold = imageFilterThreshold;
+      myVida.setActiveZonesNormFillThreshold(myVidaThreshold);
+    }
   };
 };
 
