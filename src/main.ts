@@ -387,6 +387,8 @@ const sketch = (p: p5) => {
     // Add sound library section
     p.createSpan('Sound Library').parent(controlsDiv);
     p.createElement('br').parent(controlsDiv);
+    p.createSpan('Total sounds: ' + soundLibrary.length).parent(controlsDiv);
+    p.createElement('br').parent(controlsDiv);
 
     // Add directory selection button
     const dirButton = p.createButton('Select Sounds Directory');
