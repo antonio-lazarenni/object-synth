@@ -281,6 +281,14 @@ const sketch = (p: p5) => {
     }
   };
 
+  const rerenderUIControls = () => {
+    const controlsDiv = p.select('.controls-div');
+    if (controlsDiv) {
+      controlsDiv.remove();
+      createUIControls();
+    }
+  };
+
   const createUIControls = () => {
     // Create container div for controls
     const controlsDiv = p.createDiv();
@@ -314,6 +322,7 @@ const sketch = (p: p5) => {
         }
         // Save zones after changing count
         saveZonesToLocalStorage();
+        rerenderUIControls()
       }
     });
     p.createElement('br').parent(controlsDiv);
