@@ -79,7 +79,7 @@ const sketch = (p: p5) => {
   // let baseNoteSlider: p5.Element;
   // let particles: Particle[] = [];
   let mode: MODE = MODE.EDIT;
-  let WebcamCapture: p5.Element;
+  let WebcamCapture: p5.Element | null = null;
   let myVida: Vida;
   let myVidaThreshold: number = parseFloat(localStorage.getItem('movement-threshold') || '0.02');
   let imageFilterThreshold: number = parseFloat(localStorage.getItem('image-filter-threshold') || '0.3');
@@ -99,6 +99,11 @@ const sketch = (p: p5) => {
   let soundPlayers: Map<string, HTMLAudioElement> = new Map();
   let backgroundSound: HTMLAudioElement | null = null;
   let backgroundSoundId: string | null = null;
+
+  let videoDevices: MediaDeviceInfo[] = [];
+  let webcamSelect: p5.Element | null = null;
+  let selectedVideoDeviceId: string | null = localStorage.getItem('selected-video-device-id');
+  let currentStream: MediaStream | null = null;
 
   // Add IndexedDB setup
   const DB_NAME = 'soundLibraryDB';
@@ -291,6 +296,73 @@ const sketch = (p: p5) => {
     }
   };
 
+  const stopCurrentStream = () => {
+    if (WebcamCapture) {
+      const videoEl = WebcamCapture.elt as HTMLVideoElement;
+      const stream =
+        (videoEl.srcObject as MediaStream | null) || currentStream;
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+      }
+
+      WebcamCapture.remove();
+      WebcamCapture = null;
+    }
+    currentStream = null;
+  };
+
+  const populateWebcamSelectOptions = () => {
+    if (!webcamSelect) {
+      return;
+    }
+
+    const selectEl = webcamSelect.elt as HTMLSelectElement;
+    selectEl.innerHTML = '';
+
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = 'System Default';
+    selectEl.appendChild(defaultOption);
+
+    videoDevices.forEach((device, index) => {
+      const option = document.createElement('option');
+      option.value = device.deviceId;
+      option.textContent = device.label || `Camera ${index + 1}`;
+      selectEl.appendChild(option);
+    });
+
+    const targetValue =
+      selectedVideoDeviceId &&
+      videoDevices.some((device) => device.deviceId === selectedVideoDeviceId)
+        ? selectedVideoDeviceId
+        : '';
+
+    selectEl.value = targetValue;
+
+    if (!targetValue && selectedVideoDeviceId && videoDevices.length > 0) {
+      selectedVideoDeviceId = null;
+      localStorage.removeItem('selected-video-device-id');
+    }
+  };
+
+  const refreshVideoDevices = async () => {
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices ||
+      !navigator.mediaDevices.enumerateDevices
+    ) {
+      return;
+    }
+
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      videoDevices = devices.filter((device) => device.kind === 'videoinput');
+      populateWebcamSelectOptions();
+    } catch (error) {
+      console.error('Failed to refresh video devices:', error);
+    }
+  };
+
   const createUIControls = () => {
     // Create container div for controls
     const controlsDiv = p.createDiv();
@@ -371,6 +443,23 @@ const sketch = (p: p5) => {
           updateVidaActiveZones();
         }
       }
+    });
+    p.createElement('br').parent(controlsDiv);
+
+    const webcamLabel = p.createSpan('Webcam: ');
+    webcamLabel.parent(controlsDiv);
+    webcamSelect = p.createSelect();
+    webcamSelect.parent(controlsDiv);
+    populateWebcamSelectOptions();
+    webcamSelect.changed(async () => {
+      const deviceId = (webcamSelect as any).value() as string;
+      selectedVideoDeviceId = deviceId || null;
+      if (selectedVideoDeviceId) {
+        localStorage.setItem('selected-video-device-id', selectedVideoDeviceId);
+      } else {
+        localStorage.removeItem('selected-video-device-id');
+      }
+      await initCaptureDevice(selectedVideoDeviceId || undefined);
     });
     p.createElement('br').parent(controlsDiv);
 
@@ -465,6 +554,7 @@ const sketch = (p: p5) => {
     const bgSoundLabel = p.createSpan('Background Sound: ');
     bgSoundLabel.parent(controlsDiv);
     const bgSoundSelect = p.createSelect();
+    bgSoundSelect.id('background-sound-select');
     bgSoundSelect.option('None', '');
     soundLibrary.forEach((sound) => {
       bgSoundSelect.option(sound.name, sound.id);
@@ -594,20 +684,52 @@ const sketch = (p: p5) => {
     p.createElement('br').parent(controlsDiv);
   };
 
-  function initCaptureDevice() {
+  const initCaptureDevice = async (deviceId?: string): Promise<void> => {
     try {
-      WebcamCapture = p.createCapture('video');
-      WebcamCapture.size(640, 480);
-      WebcamCapture.hide();
-      WebcamCapture.volume(0);
+      stopCurrentStream();
 
-      console.log(
-        `[initCaptureDevice] capture ready. Resolution: ${WebcamCapture.width}x${WebcamCapture.height}`
-      );
-    } catch (_err) {
-      console.log(`[initCaptureDevice] capture error: ${_err}`);
+      const constraints: MediaStreamConstraints = {
+        video: deviceId ? { deviceId: { exact: deviceId } } : true,
+        audio: false,
+      };
+
+      await new Promise<void>((resolve, reject) => {
+        try {
+          const capture = p.createCapture(constraints, () => {
+            const videoEl = capture.elt as HTMLVideoElement;
+            const stream = videoEl.srcObject as MediaStream | null;
+            if (stream) {
+              currentStream = stream;
+            }
+
+            console.log(
+              `[initCaptureDevice] capture ready. Resolution: ${capture.width}x${capture.height}`
+            );
+            resolve();
+          });
+
+          capture.size(640, 480);
+          capture.hide();
+          if (typeof (capture as any).volume === 'function') {
+            (capture as any).volume(0);
+          }
+
+          WebcamCapture = capture;
+        } catch (error) {
+          reject(error);
+        }
+      });
+
+      await refreshVideoDevices();
+    } catch (err) {
+      console.log(`[initCaptureDevice] capture error: ${err}`);
+      if (deviceId) {
+        selectedVideoDeviceId = null;
+        localStorage.removeItem('selected-video-device-id');
+        await initCaptureDevice();
+      }
     }
-  }
+  };
 
   // const updateMidiOutputs = () => {
   //   midiOutputs = outputSelects
@@ -624,7 +746,7 @@ const sketch = (p: p5) => {
   p.setup = async () => {
     p.createCanvas(640, 480);
     zones = loadZonesFromLocalStorage();
-    initCaptureDevice();
+    await initCaptureDevice(selectedVideoDeviceId || undefined);
 
     try {
       await initDB();
@@ -634,6 +756,7 @@ const sketch = (p: p5) => {
     }
 
     createUIControls();
+    await refreshVideoDevices();
     updateSoundLibraryUI();
 
     myVida = new Vida(p);
@@ -643,6 +766,19 @@ const sketch = (p: p5) => {
     myVida.setActiveZonesNormFillThreshold(myVidaThreshold);
 
     p.frameRate(30);
+
+    if (
+      typeof navigator !== 'undefined' &&
+      navigator.mediaDevices
+    ) {
+      if (typeof (navigator.mediaDevices as any).addEventListener === 'function') {
+        (navigator.mediaDevices as any).addEventListener('devicechange', refreshVideoDevices);
+      } else {
+        navigator.mediaDevices.ondevicechange = () => {
+          refreshVideoDevices();
+        };
+      }
+    }
   };
 
   p.mousePressed = () => {
@@ -676,12 +812,16 @@ const sketch = (p: p5) => {
 
     // Display video
     if (mode === MODE.PERFORMANCE) {
-      myVida.update(WebcamCapture);
-      p.image(myVida.thresholdImage, 0, 0);
+      if (WebcamCapture) {
+        myVida.update(WebcamCapture);
+        p.image(myVida.thresholdImage, 0, 0);
+      }
       myVida.drawActiveZones(0, 0, p.width, p.height);
     } else {
       // EDIT MODE
-      p.image(WebcamCapture, 0, 0, p.width, p.height);
+      if (WebcamCapture) {
+        p.image(WebcamCapture, 0, 0, p.width, p.height);
+      }
 
       if (isDragging && draggedZoneIndex !== null) {
         zones[draggedZoneIndex].x = p.mouseX - zones[draggedZoneIndex].w / 2;
@@ -828,7 +968,7 @@ const sketch = (p: p5) => {
     }
 
     // Update background sound selector
-    const bgSoundSelect = document.querySelector('select') as HTMLSelectElement;
+    const bgSoundSelect = document.getElementById('background-sound-select') as HTMLSelectElement | null;
     if (bgSoundSelect) {
       // Clear existing options except "None"
       while (bgSoundSelect.options.length > 1) {
