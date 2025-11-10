@@ -746,6 +746,7 @@ const sketch = (p: p5) => {
   p.setup = async () => {
     p.createCanvas(640, 480);
     zones = loadZonesFromLocalStorage();
+    createUIControls();
     await initCaptureDevice(selectedVideoDeviceId || undefined);
 
     try {
@@ -755,7 +756,6 @@ const sketch = (p: p5) => {
       console.error('Failed to load sounds from IndexedDB:', err);
     }
 
-    createUIControls();
     await refreshVideoDevices();
     updateSoundLibraryUI();
 
