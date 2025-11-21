@@ -758,6 +758,8 @@ const sketch = (p: p5) => {
 
     await refreshVideoDevices();
     updateSoundLibraryUI();
+    // Rerender controls to populate zone selects with loaded sounds
+    rerenderUIControls();
 
     myVida = new Vida(p);
     myVida.progressiveBackgroundFlag = true;
