@@ -107,6 +107,8 @@ const sketch = (p: p5) => {
   let backgroundSound: HTMLAudioElement | null = null;
   let backgroundSoundId: string | null = null;
 
+  let zoneSoundSelects: p5.Element[] = [];
+
   let videoDevices: MediaDeviceInfo[] = [];
   let webcamSelect: p5.Element | null = null;
   let selectedVideoDeviceId: string | null = localStorage.getItem('selected-video-device-id');
@@ -233,6 +235,7 @@ const sketch = (p: p5) => {
       soundPlayers.delete(soundId);
       soundLibrary.splice(soundIndex, 1);
       await deleteSoundFromDB(soundId);
+      rerenderUIControls();
       updateSoundLibraryUI();
     }
   };
@@ -295,6 +298,7 @@ const sketch = (p: p5) => {
         });
         soundPlayers.set(soundId, audio);
         updateSoundLibraryUI();
+        rerenderUIControls();
       } catch (err) {
         console.error('Error loading audio file:', err);
       }
@@ -594,6 +598,7 @@ const sketch = (p: p5) => {
         soundPlayers.clear();
         await deleteAllSoundsFromDB();
         updateSoundLibraryUI();
+        rerenderUIControls();
       } catch (err) {
         console.error('Error resetting sound library:', err);
       }
@@ -668,6 +673,7 @@ const sketch = (p: p5) => {
     p.createElement('br').parent(controlsDiv);
     
     // Add sound type to zone controls
+    zoneSoundSelects = [];
     zones.forEach((zone, index) => {
       const soundSelect = p.createSelect();
       const label = p.createSpan(`Zone ${index}:`);
@@ -719,6 +725,7 @@ const sketch = (p: p5) => {
       volumeLabel.parent(controlsDiv);
       volumeSlider.parent(controlsDiv);
       p.createElement('br').parent(controlsDiv);
+      zoneSoundSelects.push(soundSelect);
     });
 
     // Add sliders for VIDA thresholds
@@ -1052,12 +1059,10 @@ const sketch = (p: p5) => {
     // Update background sound selector
     const bgSoundSelect = document.getElementById('background-sound-select') as HTMLSelectElement | null;
     if (bgSoundSelect) {
-      // Clear existing options except "None"
       while (bgSoundSelect.options.length > 1) {
         bgSoundSelect.remove(1);
       }
       
-      // Add current sound library options
       soundLibrary.forEach(sound => {
         const option = document.createElement('option');
         option.value = sound.id;
@@ -1065,11 +1070,29 @@ const sketch = (p: p5) => {
         bgSoundSelect.appendChild(option);
       });
       
-      // Restore selection if possible
       if (backgroundSoundId) {
         bgSoundSelect.value = backgroundSoundId;
       }
     }
+
+    // Update zone sound selects
+    zoneSoundSelects.forEach((selectEl, index) => {
+      const selectDom = selectEl.elt as HTMLSelectElement;
+      const currentValue = zones[index]?.soundId || '';
+
+      while (selectDom.options.length > 1) {
+        selectDom.remove(1);
+      }
+
+      soundLibrary.forEach(sound => {
+        const option = document.createElement('option');
+        option.value = sound.id;
+        option.textContent = sound.name;
+        selectDom.appendChild(option);
+      });
+
+      selectDom.value = currentValue;
+    });
   };
 
   // Add sound playback and deletion functions
