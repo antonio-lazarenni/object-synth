@@ -35,6 +35,13 @@ interface Zone {
 
 const RESIZE_SPEED = 10;
 
+// Processing resolution presets (lower = faster, fewer pixels)
+const PROCESS_RESOLUTIONS: { w: number; h: number; label: string }[] = [
+  { w: 640, h: 480, label: '640×480 (full)' },
+  { w: 320, h: 240, label: '320×240 (2× faster)' },
+  { w: 160, h: 120, label: '160×120 (4× faster)' },
+];
+
 // Add FileSystem API types
 declare global {
   interface Window {
@@ -104,6 +111,14 @@ const sketch = (p: p5) => {
   let webcamSelect: p5.Element | null = null;
   let selectedVideoDeviceId: string | null = localStorage.getItem('selected-video-device-id');
   let currentStream: MediaStream | null = null;
+
+  // Processing resolution for motion detection (lower = faster)
+  let processWidth = parseInt(localStorage.getItem('process-width') || '320', 10);
+  let processHeight = parseInt(localStorage.getItem('process-height') || '240', 10);
+  let processBuffer: p5.Graphics | null = null;
+
+  // Optional FPS display for performance tuning
+  let showFpsDisplay = localStorage.getItem('show-fps') === 'true';
 
   // Add IndexedDB setup
   const DB_NAME = 'soundLibraryDB';
@@ -296,6 +311,15 @@ const sketch = (p: p5) => {
     }
   };
 
+  let rerenderDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const debouncedRerenderUIControls = () => {
+    if (rerenderDebounceTimer) clearTimeout(rerenderDebounceTimer);
+    rerenderDebounceTimer = setTimeout(() => {
+      rerenderDebounceTimer = null;
+      rerenderUIControls();
+    }, 100);
+  };
+
   const stopCurrentStream = () => {
     if (WebcamCapture) {
       const videoEl = WebcamCapture.elt as HTMLVideoElement;
@@ -396,7 +420,7 @@ const sketch = (p: p5) => {
         }
         // Save zones after changing count
         saveZonesToLocalStorage();
-        rerenderUIControls()
+        debouncedRerenderUIControls();
       }
     });
     p.createElement('br').parent(controlsDiv);
@@ -473,6 +497,41 @@ const sketch = (p: p5) => {
       if (mode === MODE.PERFORMANCE) {
         updateVidaActiveZones();
       }
+    });
+    p.createElement('br').parent(controlsDiv);
+
+    // Processing resolution for performance mode (lower = faster)
+    p.createSpan('Process resolution: ').parent(controlsDiv);
+    const processResSelect = p.createSelect();
+    PROCESS_RESOLUTIONS.forEach((res) => {
+      processResSelect.option(res.label, `${res.w}x${res.h}`);
+    });
+    const currentResKey = `${processWidth}x${processHeight}`;
+    const matchingOpt = PROCESS_RESOLUTIONS.find((r) => `${r.w}x${r.h}` === currentResKey);
+    processResSelect.selected(matchingOpt ? matchingOpt.label : '320×240 (2× faster)');
+    processResSelect.parent(controlsDiv);
+    processResSelect.changed(() => {
+      const val = (processResSelect as any).value() as string;
+      const [w, h] = val.split('x').map(Number);
+      processWidth = w;
+      processHeight = h;
+      localStorage.setItem('process-width', String(w));
+      localStorage.setItem('process-height', String(h));
+      // Recreate buffer (p5.Graphics has no reliable resize)
+      processBuffer = p.createGraphics(w, h);
+      processBuffer.pixelDensity(1);
+      if (mode === MODE.PERFORMANCE) {
+        updateVidaActiveZones();
+      }
+    });
+    p.createElement('br').parent(controlsDiv);
+
+    // FPS display toggle for performance tuning
+    const fpsCheckbox = p.createCheckbox('Show FPS', showFpsDisplay);
+    fpsCheckbox.parent(controlsDiv);
+    fpsCheckbox.changed(() => {
+      showFpsDisplay = (fpsCheckbox as any).checked();
+      localStorage.setItem('show-fps', String(showFpsDisplay));
     });
 
     // Add sound library section
@@ -768,6 +827,10 @@ const sketch = (p: p5) => {
     myVida.handleActiveZonesFlag = true;
     myVida.setActiveZonesNormFillThreshold(myVidaThreshold);
 
+    // Create processing buffer for lower-res motion detection
+    processBuffer = p.createGraphics(processWidth, processHeight);
+    processBuffer.pixelDensity(1);
+
     p.frameRate(30);
 
     if (
@@ -815,9 +878,12 @@ const sketch = (p: p5) => {
 
     // Display video
     if (mode === MODE.PERFORMANCE) {
-      if (WebcamCapture) {
-        myVida.update(WebcamCapture);
-        p.image(myVida.thresholdImage, 0, 0);
+      if (WebcamCapture && processBuffer) {
+        // Scale webcam to processing resolution for faster motion detection
+        processBuffer.image(WebcamCapture as any, 0, 0, processWidth, processHeight);
+        myVida.update(processBuffer as any);
+        // Scale threshold image up for display
+        p.image(myVida.thresholdImage, 0, 0, p.width, p.height);
       }
       myVida.drawActiveZones(0, 0, p.width, p.height);
     } else {
@@ -850,6 +916,19 @@ const sketch = (p: p5) => {
         p.text(index.toString(), zone.x + zone.w / 2, zone.y + zone.h / 2);
         p.noFill(); // Reset fill for next rectangle
       });
+    }
+
+    // Optional FPS display (top-right corner)
+    if (showFpsDisplay) {
+      p.push();
+      p.fill(0, 180);
+      p.noStroke();
+      p.rect(p.width - 70, 4, 66, 22, 4);
+      p.fill(0, 255, 0);
+      p.textSize(14);
+      p.textAlign(p.RIGHT, p.TOP);
+      p.text(`${Math.round(p.frameRate())} FPS`, p.width - 8, 8);
+      p.pop();
     }
   };
 
