@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { mountEngine, unmountEngine } from '../controller';
 import { ControlsTabs } from './ControlsTabs';
+import { VersionBadge } from './VersionBadge';
 
 export const EditorLayout = () => {
   const canvasHostRef = useRef<HTMLDivElement>(null);
@@ -23,6 +24,7 @@ export const EditorLayout = () => {
       <section className="min-w-0">
         <ControlsTabs />
       </section>
+      <VersionBadge />
     </div>
   );
 };
