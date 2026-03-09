@@ -9,6 +9,11 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.2.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "tailwindcss": "^4.2.1",
     "typescript": "~5.7.2",
     "vite": "^6.1.0"
   },
@@ -16,6 +21,8 @@
     "@types/p5": "^1.7.7",
     "@types/webmidi": "^2.1.0",
     "p5": "^2.2.2",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "webmidi": "^3.1.12"
   }
 }
