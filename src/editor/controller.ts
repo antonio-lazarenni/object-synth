@@ -1,10 +1,9 @@
-import { useSyncExternalStore } from 'react';
 import { P5EngineAdapter } from '../engine/p5Engine';
-import { editorStore } from './state';
-import { MODE } from './types';
+import { setEditorStatePartial, useEditorStore } from './state';
+import { MODE, type EditorState } from './types';
 
 const engine = new P5EngineAdapter({
-  onStateChange: (partial) => editorStore.setState(partial),
+  onStateChange: (partial) => setEditorStatePartial(partial),
 });
 
 export const mountEngine = (container: HTMLElement): void => {
@@ -15,11 +14,7 @@ export const unmountEngine = (): void => {
   engine.destroy();
 };
 
-export const useEditorState = () =>
-  useSyncExternalStore(
-    (listener) => editorStore.subscribe(listener),
-    () => editorStore.getState()
-  );
+export const useEditorState = () => useEditorStore((state: EditorState) => state);
 
 export const editorActions = {
   setMode: (mode: MODE) => engine.setMode(mode),

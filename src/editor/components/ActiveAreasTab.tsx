@@ -1,57 +1,52 @@
-import type { EditorState } from '../types';
+import { editorActions } from '../controller';
+import { useEditorStore } from '../state';
 import { CameraSelector } from './CameraSelector';
 import { ModeToggle } from './ModeToggle';
 import { PerformanceControls } from './PerformanceControls';
 import { ThresholdControls } from './ThresholdControls';
 import { ZonesPanel } from './ZonesPanel';
 
-type Props = {
-  state: EditorState;
-  actions: {
-    setMode: (mode: EditorState['mode']) => void;
-    setSelectedVideoDevice: (deviceId: string | null) => void;
-    setProcessResolution: (w: number, h: number) => void;
-    setShowFps: (show: boolean) => void;
-    setActiveZoneCount: (count: number) => void;
-    resetZones: () => void;
-    setZoneSound: (index: number, soundId: string) => void;
-    setZonePan: (index: number, pan: number) => void;
-    setZoneVolume: (index: number, volume: number) => void;
-    setImageFilterThreshold: (value: number) => void;
-    setMovementThreshold: (value: number) => void;
-  };
-};
+export const ActiveAreasTab = () => {
+  const mode = useEditorStore((state) => state.mode);
+  const videoDevices = useEditorStore((state) => state.videoDevices);
+  const selectedVideoDeviceId = useEditorStore((state) => state.selectedVideoDeviceId);
+  const processWidth = useEditorStore((state) => state.processWidth);
+  const processHeight = useEditorStore((state) => state.processHeight);
+  const showFpsDisplay = useEditorStore((state) => state.showFpsDisplay);
+  const imageFilterThreshold = useEditorStore((state) => state.imageFilterThreshold);
+  const movementThreshold = useEditorStore((state) => state.movementThreshold);
+  const zones = useEditorStore((state) => state.zones);
+  const sounds = useEditorStore((state) => state.sounds);
 
-export const ActiveAreasTab = ({ state, actions }: Props) => {
   return (
     <div className="space-y-4">
-      <ModeToggle mode={state.mode} onChange={actions.setMode} />
+      <ModeToggle mode={mode} onChange={editorActions.setMode} />
       <CameraSelector
-        devices={state.videoDevices}
-        selectedDeviceId={state.selectedVideoDeviceId}
-        onChange={actions.setSelectedVideoDevice}
+        devices={videoDevices}
+        selectedDeviceId={selectedVideoDeviceId}
+        onChange={editorActions.setSelectedVideoDevice}
       />
       <PerformanceControls
-        processWidth={state.processWidth}
-        processHeight={state.processHeight}
-        showFpsDisplay={state.showFpsDisplay}
-        onChangeResolution={actions.setProcessResolution}
-        onToggleFps={actions.setShowFps}
+        processWidth={processWidth}
+        processHeight={processHeight}
+        showFpsDisplay={showFpsDisplay}
+        onChangeResolution={editorActions.setProcessResolution}
+        onToggleFps={editorActions.setShowFps}
       />
       <ThresholdControls
-        imageFilterThreshold={state.imageFilterThreshold}
-        movementThreshold={state.movementThreshold}
-        onImageFilterThresholdChange={actions.setImageFilterThreshold}
-        onMovementThresholdChange={actions.setMovementThreshold}
+        imageFilterThreshold={imageFilterThreshold}
+        movementThreshold={movementThreshold}
+        onImageFilterThresholdChange={editorActions.setImageFilterThreshold}
+        onMovementThresholdChange={editorActions.setMovementThreshold}
       />
       <ZonesPanel
-        zones={state.zones}
-        sounds={state.sounds}
-        onSetCount={actions.setActiveZoneCount}
-        onResetZones={actions.resetZones}
-        onSetZoneSound={actions.setZoneSound}
-        onSetZonePan={actions.setZonePan}
-        onSetZoneVolume={actions.setZoneVolume}
+        zones={zones}
+        sounds={sounds}
+        onSetCount={editorActions.setActiveZoneCount}
+        onResetZones={editorActions.resetZones}
+        onSetZoneSound={editorActions.setZoneSound}
+        onSetZonePan={editorActions.setZonePan}
+        onSetZoneVolume={editorActions.setZoneVolume}
       />
     </div>
   );

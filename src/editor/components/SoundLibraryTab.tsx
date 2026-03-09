@@ -1,40 +1,32 @@
-import type { EditorState } from '../types';
+import { editorActions } from '../controller';
+import { useEditorStore } from '../state';
 import { SoundLibraryPanel } from './SoundLibraryPanel';
 
-type Props = {
-  state: EditorState;
-  actions: {
-    addSoundFiles: (files: File[]) => Promise<void>;
-    loadSoundsFromDirectory: () => Promise<void>;
-    resetSoundLibrary: () => Promise<void>;
-    playSound: (soundId: string) => void;
-    deleteSound: (soundId: string) => Promise<void>;
-    setBackgroundSound: (soundId: string | null) => void;
-    setBackgroundVolume: (volume: number) => void;
-  };
-};
+export const SoundLibraryTab = () => {
+  const sounds = useEditorStore((state) => state.sounds);
+  const backgroundSoundId = useEditorStore((state) => state.backgroundSoundId);
+  const backgroundVolume = useEditorStore((state) => state.backgroundVolume);
 
-export const SoundLibraryTab = ({ state, actions }: Props) => {
   return (
     <SoundLibraryPanel
-      sounds={state.sounds}
-      backgroundSoundId={state.backgroundSoundId}
-      backgroundVolume={state.backgroundVolume}
+      sounds={sounds}
+      backgroundSoundId={backgroundSoundId}
+      backgroundVolume={backgroundVolume}
       onFilesSelected={(files) => {
-        void actions.addSoundFiles(files);
+        void editorActions.addSoundFiles(files);
       }}
       onSelectDirectory={() => {
-        void actions.loadSoundsFromDirectory();
+        void editorActions.loadSoundsFromDirectory();
       }}
       onReset={() => {
-        void actions.resetSoundLibrary();
+        void editorActions.resetSoundLibrary();
       }}
-      onPlay={actions.playSound}
+      onPlay={editorActions.playSound}
       onDelete={(soundId) => {
-        void actions.deleteSound(soundId);
+        void editorActions.deleteSound(soundId);
       }}
-      onSetBackgroundSound={actions.setBackgroundSound}
-      onSetBackgroundVolume={actions.setBackgroundVolume}
+      onSetBackgroundSound={editorActions.setBackgroundSound}
+      onSetBackgroundVolume={editorActions.setBackgroundVolume}
     />
   );
 };

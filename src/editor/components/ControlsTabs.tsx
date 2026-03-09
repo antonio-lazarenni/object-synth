@@ -1,35 +1,10 @@
 import { useState } from 'react';
-import type { EditorState } from '../types';
 import { ActiveAreasTab } from './ActiveAreasTab';
 import { SoundLibraryTab } from './SoundLibraryTab';
 
 type TabId = 'active-areas' | 'sound-library';
 
-type Props = {
-  state: EditorState;
-  actions: {
-    setMode: (mode: EditorState['mode']) => void;
-    setSelectedVideoDevice: (deviceId: string | null) => void;
-    setProcessResolution: (w: number, h: number) => void;
-    setShowFps: (show: boolean) => void;
-    setActiveZoneCount: (count: number) => void;
-    resetZones: () => void;
-    setZoneSound: (index: number, soundId: string) => void;
-    setZonePan: (index: number, pan: number) => void;
-    setZoneVolume: (index: number, volume: number) => void;
-    setImageFilterThreshold: (value: number) => void;
-    setMovementThreshold: (value: number) => void;
-    addSoundFiles: (files: File[]) => Promise<void>;
-    loadSoundsFromDirectory: () => Promise<void>;
-    resetSoundLibrary: () => Promise<void>;
-    playSound: (soundId: string) => void;
-    deleteSound: (soundId: string) => Promise<void>;
-    setBackgroundSound: (soundId: string | null) => void;
-    setBackgroundVolume: (volume: number) => void;
-  };
-};
-
-export const ControlsTabs = ({ state, actions }: Props) => {
+export const ControlsTabs = () => {
   const [activeTab, setActiveTab] = useState<TabId>('active-areas');
 
   return (
@@ -54,9 +29,9 @@ export const ControlsTabs = ({ state, actions }: Props) => {
       </div>
 
       {activeTab === 'active-areas' ? (
-        <ActiveAreasTab state={state} actions={actions} />
+        <ActiveAreasTab />
       ) : (
-        <SoundLibraryTab state={state} actions={actions} />
+        <SoundLibraryTab />
       )}
     </div>
   );

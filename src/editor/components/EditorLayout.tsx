@@ -1,9 +1,8 @@
 import { useEffect, useRef } from 'react';
-import { editorActions, mountEngine, unmountEngine, useEditorState } from '../controller';
+import { mountEngine, unmountEngine } from '../controller';
 import { ControlsTabs } from './ControlsTabs';
 
 export const EditorLayout = () => {
-  const state = useEditorState();
   const canvasHostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -22,7 +21,7 @@ export const EditorLayout = () => {
       </section>
 
       <section className="min-w-0">
-        <ControlsTabs state={state} actions={editorActions} />
+        <ControlsTabs />
       </section>
     </div>
   );
