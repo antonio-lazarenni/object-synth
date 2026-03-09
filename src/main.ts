@@ -1,7 +1,6 @@
 import p5 from 'p5';
 // import { WebMidi, Output } from 'webmidi';
 // import Particle from './Particle';
-import Vida from './vida';
 enum MODE {
   EDIT = 'edit',
   PERFORMANCE = 'performance',
@@ -34,6 +33,8 @@ interface Zone {
 }
 
 const RESIZE_SPEED = 10;
+const PIXEL_DIFF_THRESHOLD_SCALE = 100;
+const MIN_ACTIVE_FRAMES = 2;
 
 // Processing resolution presets (lower = faster, fewer pixels)
 const PROCESS_RESOLUTIONS: { w: number; h: number; label: string }[] = [
@@ -87,11 +88,15 @@ const sketch = (p: p5) => {
   // let particles: Particle[] = [];
   let mode: MODE = MODE.EDIT;
   let WebcamCapture: p5.Element | null = null;
-  let myVida: Vida;
   let myVidaThreshold: number = parseFloat(localStorage.getItem('movement-threshold') || '0.02');
   let imageFilterThreshold: number = parseFloat(localStorage.getItem('image-filter-threshold') || '0.3');
   let activeZonesInput: p5.Element;
   let zones: Zone[] = [];
+
+  let prevGray: Uint8Array | null = null;
+  let zoneActiveCounts = new Uint8Array(0);
+  let zoneMovementFlags: boolean[] = [];
+  let zoneMotionRatios = new Float32Array(0);
   // Enable WebMidi at the start
   // WebMidi.enable()
   //   .then(() => {
@@ -324,6 +329,145 @@ const sketch = (p: p5) => {
     }, 100);
   };
 
+  const syncZoneMotionBuffers = () => {
+    if (zoneActiveCounts.length !== zones.length) {
+      zoneActiveCounts = new Uint8Array(zones.length);
+      zoneMovementFlags = Array(zones.length).fill(false);
+      zoneMotionRatios = new Float32Array(zones.length);
+    }
+  };
+
+  const resetZoneMotionState = () => {
+    prevGray = null;
+    syncZoneMotionBuffers();
+    zoneActiveCounts.fill(0);
+    zoneMovementFlags.fill(false);
+    zoneMotionRatios.fill(0);
+  };
+
+  const getPixelDiffThreshold = () => {
+    return Math.max(
+      1,
+      Math.floor(imageFilterThreshold * PIXEL_DIFF_THRESHOLD_SCALE)
+    );
+  };
+
+  const detectZoneMotion = () => {
+    if (!WebcamCapture || !processBuffer) {
+      return;
+    }
+
+    processBuffer.image(WebcamCapture as any, 0, 0, processWidth, processHeight);
+    processBuffer.loadPixels();
+    const pix = processBuffer.pixels;
+    if (!pix || pix.length === 0) {
+      return;
+    }
+
+    const currGray = new Uint8Array(processWidth * processHeight);
+    for (let y = 0; y < processHeight; y++) {
+      for (let x = 0; x < processWidth; x++) {
+        const idx = y * processWidth + x;
+        const pi = idx * 4;
+        const r = pix[pi];
+        const g = pix[pi + 1];
+        const b = pix[pi + 2];
+        currGray[idx] = (0.299 * r + 0.587 * g + 0.114 * b) | 0;
+      }
+    }
+
+    if (!prevGray) {
+      prevGray = currGray;
+      return;
+    }
+    const prevFrame = prevGray;
+
+    syncZoneMotionBuffers();
+    const pixelDiffThreshold = getPixelDiffThreshold();
+
+    zones.forEach((zone, index) => {
+      const x0 = Math.max(
+        0,
+        Math.min(processWidth, Math.floor((zone.x / p.width) * processWidth))
+      );
+      const y0 = Math.max(
+        0,
+        Math.min(processHeight, Math.floor((zone.y / p.height) * processHeight))
+      );
+      const x1 = Math.max(
+        0,
+        Math.min(
+          processWidth,
+          Math.ceil(((zone.x + zone.w) / p.width) * processWidth)
+        )
+      );
+      const y1 = Math.max(
+        0,
+        Math.min(
+          processHeight,
+          Math.ceil(((zone.y + zone.h) / p.height) * processHeight)
+        )
+      );
+
+      const zoneWidth = x1 - x0;
+      const zoneHeight = y1 - y0;
+      if (zoneWidth <= 0 || zoneHeight <= 0) {
+        zoneMotionRatios[index] = 0;
+        zoneActiveCounts[index] = 0;
+        zoneMovementFlags[index] = false;
+        return;
+      }
+
+      let changedPixels = 0;
+      const zoneArea = zoneWidth * zoneHeight;
+      for (let py = y0; py < y1; py++) {
+        for (let px = x0; px < x1; px++) {
+          const pixelIndex = py * processWidth + px;
+          const diff = Math.abs(currGray[pixelIndex] - prevFrame[pixelIndex]);
+          if (diff > pixelDiffThreshold) {
+            changedPixels += 1;
+          }
+        }
+      }
+
+      const ratio = changedPixels / zoneArea;
+      zoneMotionRatios[index] = ratio;
+      const isMotionNow = ratio >= myVidaThreshold;
+      zoneActiveCounts[index] = isMotionNow
+        ? Math.min(255, zoneActiveCounts[index] + 1)
+        : 0;
+      const isActive = zoneActiveCounts[index] >= MIN_ACTIVE_FRAMES;
+
+      if (isActive && !zoneMovementFlags[index]) {
+        console.log(`Movement detected in zone ${zone.id}`);
+        if (zone.soundId) {
+          playSound(zone.soundId);
+        }
+        console.log(`Zone ${zone.id} has soundId: ${zone.soundId}`);
+      }
+
+      zoneMovementFlags[index] = isActive;
+    });
+
+    prevGray = currGray;
+  };
+
+  const drawZoneMotionOverlay = () => {
+    syncZoneMotionBuffers();
+    zones.forEach((zone, index) => {
+      const isActive = zoneMovementFlags[index];
+      if (isActive) {
+        p.fill(255, 60, 60, 90);
+        p.stroke(255, 80, 80);
+      } else {
+        p.fill(0, 255, 0, 30);
+        p.stroke(120, 255, 120);
+      }
+      p.strokeWeight(2);
+      p.rect(zone.x, zone.y, zone.w, zone.h);
+    });
+  };
+
   const stopCurrentStream = () => {
     if (WebcamCapture) {
       const videoEl = WebcamCapture.elt as HTMLVideoElement;
@@ -420,7 +564,7 @@ const sketch = (p: p5) => {
           };
         });
         if (mode === MODE.PERFORMANCE) {
-          updateVidaActiveZones();
+          resetZoneMotionState();
         }
         // Save zones after changing count
         saveZonesToLocalStorage();
@@ -468,7 +612,7 @@ const sketch = (p: p5) => {
           })
         );
         if (mode === MODE.PERFORMANCE) {
-          updateVidaActiveZones();
+          resetZoneMotionState();
         }
       }
     });
@@ -491,7 +635,7 @@ const sketch = (p: p5) => {
     });
     p.createElement('br').parent(controlsDiv);
 
-    const modesRadio = p.createRadio();
+    const modesRadio = p.createRadio() as any;
     modesRadio.option('edit', 'Edit mode');
     modesRadio.option('performance', 'Performance mode');
     modesRadio.selected('edit');
@@ -499,14 +643,14 @@ const sketch = (p: p5) => {
     modesRadio.changed(() => {
       mode = modesRadio.value() as MODE;
       if (mode === MODE.PERFORMANCE) {
-        updateVidaActiveZones();
+        resetZoneMotionState();
       }
     });
     p.createElement('br').parent(controlsDiv);
 
     // Processing resolution for performance mode (lower = faster)
     p.createSpan('Process resolution: ').parent(controlsDiv);
-    const processResSelect = p.createSelect();
+    const processResSelect = p.createSelect() as any;
     PROCESS_RESOLUTIONS.forEach((res) => {
       processResSelect.option(res.label, `${res.w}x${res.h}`);
     });
@@ -525,7 +669,7 @@ const sketch = (p: p5) => {
       processBuffer = p.createGraphics(w, h);
       processBuffer.pixelDensity(1);
       if (mode === MODE.PERFORMANCE) {
-        updateVidaActiveZones();
+        resetZoneMotionState();
       }
     });
     p.createElement('br').parent(controlsDiv);
@@ -617,7 +761,7 @@ const sketch = (p: p5) => {
     // Add background sound selector
     const bgSoundLabel = p.createSpan('Background Sound: ');
     bgSoundLabel.parent(controlsDiv);
-    const bgSoundSelect = p.createSelect();
+    const bgSoundSelect = p.createSelect() as any;
     bgSoundSelect.id('background-sound-select');
     bgSoundSelect.option('None', '');
     soundLibrary.forEach((sound) => {
@@ -675,7 +819,7 @@ const sketch = (p: p5) => {
     // Add sound type to zone controls
     zoneSoundSelects = [];
     zones.forEach((zone, index) => {
-      const soundSelect = p.createSelect();
+      const soundSelect = p.createSelect() as any;
       const label = p.createSpan(`Zone ${index}:`);
       const panSlider = p.createSlider(-1, 1, zone.pan || 0, 0.1);
       const panLabel = p.createSpan('Pan: ');
@@ -735,7 +879,6 @@ const sketch = (p: p5) => {
     imageFilterSlider.input(() => {
       imageFilterThreshold = imageFilterSlider.value() as number;
       localStorage.setItem('image-filter-threshold', imageFilterThreshold.toString());
-      updateVidaThresholds();
     });
     p.createElement('br').parent(controlsDiv);
 
@@ -745,7 +888,6 @@ const sketch = (p: p5) => {
     movementThresholdSlider.input(() => {
       myVidaThreshold = movementThresholdSlider.value() as number;
       localStorage.setItem('movement-threshold', myVidaThreshold.toString());
-      updateVidaThresholds();
     });
     p.createElement('br').parent(controlsDiv);
   };
@@ -761,18 +903,7 @@ const sketch = (p: p5) => {
 
       await new Promise<void>((resolve, reject) => {
         try {
-          const capture = p.createCapture(constraints, () => {
-            const videoEl = capture.elt as HTMLVideoElement;
-            const stream = videoEl.srcObject as MediaStream | null;
-            if (stream) {
-              currentStream = stream;
-            }
-
-            console.log(
-              `[initCaptureDevice] capture ready. Resolution: ${capture.width}x${capture.height}`
-            );
-            resolve();
-          });
+          const capture = p.createCapture(constraints as any);
 
           capture.size(640, 480);
           capture.hide();
@@ -781,6 +912,30 @@ const sketch = (p: p5) => {
           }
 
           WebcamCapture = capture;
+          resetZoneMotionState();
+
+          const videoEl = capture.elt as HTMLVideoElement;
+          const onReady = () => {
+            const stream = videoEl.srcObject as MediaStream | null;
+            if (stream) {
+              currentStream = stream;
+            }
+            console.log(
+              `[initCaptureDevice] capture ready. Resolution: ${capture.width}x${capture.height}`
+            );
+            resolve();
+          };
+
+          if (videoEl.readyState >= 1) {
+            onReady();
+          } else {
+            videoEl.addEventListener('loadedmetadata', onReady, { once: true });
+            videoEl.addEventListener(
+              'error',
+              () => reject(new Error('Video metadata load failed')),
+              { once: true }
+            );
+          }
         } catch (error) {
           reject(error);
         }
@@ -828,15 +983,10 @@ const sketch = (p: p5) => {
     // Update sound library UI after controls are recreated
     updateSoundLibraryUI();
 
-    myVida = new Vida(p);
-    myVida.progressiveBackgroundFlag = true;
-    myVida.imageFilterThreshold = imageFilterThreshold;
-    myVida.handleActiveZonesFlag = true;
-    myVida.setActiveZonesNormFillThreshold(myVidaThreshold);
-
     // Create processing buffer for lower-res motion detection
     processBuffer = p.createGraphics(processWidth, processHeight);
     processBuffer.pixelDensity(1);
+    resetZoneMotionState();
 
     p.frameRate(30);
 
@@ -873,9 +1023,6 @@ const sketch = (p: p5) => {
   p.mouseReleased = () => {
     isDragging = false;
     draggedZoneIndex = null;
-    if (mode === MODE.PERFORMANCE) {
-      updateVidaActiveZones();
-    }
     // Save zones after dragging
     saveZonesToLocalStorage();
   };
@@ -885,14 +1032,11 @@ const sketch = (p: p5) => {
 
     // Display video
     if (mode === MODE.PERFORMANCE) {
-      if (WebcamCapture && processBuffer) {
-        // Scale webcam to processing resolution for faster motion detection
-        processBuffer.image(WebcamCapture as any, 0, 0, processWidth, processHeight);
-        myVida.update(processBuffer as any);
-        // Scale threshold image up for display
-        p.image(myVida.thresholdImage, 0, 0, p.width, p.height);
+      if (WebcamCapture) {
+        p.image(WebcamCapture, 0, 0, p.width, p.height);
+        detectZoneMotion();
       }
-      myVida.drawActiveZones(0, 0, p.width, p.height);
+      drawZoneMotionOverlay();
     } else {
       // EDIT MODE
       if (WebcamCapture) {
@@ -939,61 +1083,20 @@ const sketch = (p: p5) => {
     }
   };
 
-  function updateVidaActiveZones() {
-    // Clear existing active zones
-    myVida.activeZones = [];
-
-    // Add new active zones based on current rectangles
-    zones.forEach((zone, index) => {
-      // Convert screen coordinates to normalized coordinates (0-1)
-      const normX = zone.x / p.width;
-      const normY = zone.y / p.height;
-      const normW = zone.w / p.width;
-      const normH = zone.h / p.height;
-
-      myVida.addActiveZone(
-        index, // zone id
-        normX, // normalized x
-        normY, // normalized y
-        normW, // normalized width
-        normH, // normalized height
-        (zone) => {
-          // Callback when zone activity changes
-          if (zone.isMovementDetectedFlag) {
-            console.log(`Movement detected in zone ${zone.id}`);
-            if (zones[zone.id].soundId) {
-              playSound(zones[zone.id].soundId!);
-            }
-            // Here you can add MIDI triggering logic
-            console.log(
-              `Zone ${zone.id} has soundId: ${zones[zone.id].soundId}`
-            );
-            // if (midiOutputs[zone.id]) {
-            //   midiOutputs[zone.id].send(
-            //     [0x90 + MIDI_CHANNEL, Math.floor(Math.random() * 127), 127],
-            //     { time: 10 }
-            //   );
-            // }
-          }
-        }
-      );
-    });
-  }
-
   // Update keyPressed to save zones after resizing
   p.keyPressed = () => {
     if (lastDraggedZoneIndex !== null) {
-      switch (p.keyCode) {
-        case p.UP_ARROW:
+      switch (p.key) {
+        case 'ArrowUp':
           zones[lastDraggedZoneIndex].h -= RESIZE_SPEED;
           break;
-        case p.DOWN_ARROW:
+        case 'ArrowDown':
           zones[lastDraggedZoneIndex].h += RESIZE_SPEED;
           break;
-        case p.LEFT_ARROW:
+        case 'ArrowLeft':
           zones[lastDraggedZoneIndex].w -= RESIZE_SPEED;
           break;
-        case p.RIGHT_ARROW:
+        case 'ArrowRight':
           zones[lastDraggedZoneIndex].w += RESIZE_SPEED;
           break;
       }
@@ -1008,6 +1111,9 @@ const sketch = (p: p5) => {
       );
       // Save zones after resizing
       saveZonesToLocalStorage();
+      if (mode === MODE.PERFORMANCE) {
+        resetZoneMotionState();
+      }
     }
   };
 
@@ -1176,13 +1282,6 @@ const sketch = (p: p5) => {
     );
   };
 
-  // Add function to update VIDA threshold settings
-  const updateVidaThresholds = () => {
-    if (myVida) {
-      myVida.imageFilterThreshold = imageFilterThreshold;
-      myVida.setActiveZonesNormFillThreshold(myVidaThreshold);
-    }
-  };
 };
 
 // Create P5 instance
