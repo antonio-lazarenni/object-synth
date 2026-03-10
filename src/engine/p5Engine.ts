@@ -520,6 +520,13 @@ export class P5EngineAdapter {
           p.textSize(12);
           p.textAlign(p.LEFT, p.TOP);
           p.text(`${Math.round(ratio * 100)}%`, zone.x + 4, zone.y + 4);
+
+          if (zone.soundId) {
+            p.textAlign(p.RIGHT, p.TOP);
+            p.textSize(18);
+            p.fill('#ffd166');
+            p.text('♪', zone.x + zone.w - 6, zone.y + 6);
+          }
         });
       };
 
@@ -745,6 +752,12 @@ export class P5EngineAdapter {
             p.textAlign(p.CENTER, p.CENTER);
             p.textSize(20);
             p.text(index.toString(), zone.x + zone.w / 2, zone.y + zone.h / 2);
+            if (zone.soundId) {
+              p.textAlign(p.RIGHT, p.TOP);
+              p.textSize(18);
+              p.fill('#ffd166');
+              p.text('♪', zone.x + zone.w - 6, zone.y + 6);
+            }
             p.noFill();
           });
         }

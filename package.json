@@ -23,11 +23,9 @@
   "dependencies": {
     "@tailwindcss/oxide-wasm32-wasi": "4.2.1",
     "@types/p5": "^1.7.7",
-    "@types/webmidi": "^2.1.0",
     "p5": "^2.2.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "webmidi": "^3.1.12",
     "zustand": "^5.0.11"
   }
 }
