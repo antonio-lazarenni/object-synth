@@ -35,4 +35,5 @@ export const editorActions = {
   setZoneSound: (index: number, soundId: string) => engine.setZoneSound(index, soundId),
   setZonePan: (index: number, pan: number) => engine.setZonePan(index, pan),
   setZoneVolume: (index: number, volume: number) => engine.setZoneVolume(index, volume),
+  setZoneOverdub: (index: number, overdub: boolean) => engine.setZoneOverdub(index, overdub),
 };

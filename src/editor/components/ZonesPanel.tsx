@@ -8,6 +8,7 @@ type Props = {
   onSetZoneSound: (index: number, soundId: string) => void;
   onSetZonePan: (index: number, pan: number) => void;
   onSetZoneVolume: (index: number, volume: number) => void;
+  onSetZoneOverdub: (index: number, overdub: boolean) => void;
 };
 
 export const ZonesPanel = ({
@@ -18,6 +19,7 @@ export const ZonesPanel = ({
   onSetZoneSound,
   onSetZonePan,
   onSetZoneVolume,
+  onSetZoneOverdub,
 }: Props) => {
   return (
     <div className="space-y-3">
@@ -83,6 +85,14 @@ export const ZonesPanel = ({
                 />
               </label>
             </div>
+            <label className="mt-2 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={zone.overdub ?? true}
+                onChange={(event) => onSetZoneOverdub(index, event.target.checked)}
+              />
+              Overdub (allow retrigger while playing)
+            </label>
           </div>
         ))}
       </div>

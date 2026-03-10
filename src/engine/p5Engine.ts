@@ -77,6 +77,7 @@ export class P5EngineAdapter {
   private commandSetZoneSound: ((index: number, soundId: string) => void) | null = null;
   private commandSetZonePan: ((index: number, pan: number) => void) | null = null;
   private commandSetZoneVolume: ((index: number, volume: number) => void) | null = null;
+  private commandSetZoneOverdub: ((index: number, overdub: boolean) => void) | null = null;
   private commandAddSoundFiles: ((files: File[]) => Promise<void>) | null = null;
   private commandLoadSoundsFromDirectory: ((dirHandle: FileSystemDirectoryHandle) => Promise<void>) | null = null;
   private commandResetSoundLibrary: (() => Promise<void>) | null = null;
@@ -114,6 +115,8 @@ export class P5EngineAdapter {
       const soundPlayers: Map<string, HTMLAudioElement> = new Map();
       let backgroundSound: HTMLAudioElement | null = null;
       let backgroundSoundId: string | null = null;
+      let zoneActiveAudioPlayers: Array<Set<HTMLAudioElement>> = [];
+      let zonePlayheadAudio: Array<HTMLAudioElement | null> = [];
 
       let videoDevices: MediaDeviceInfo[] = [];
       let selectedVideoDeviceId: string | null = this.state.selectedVideoDeviceId;
@@ -136,9 +139,12 @@ export class P5EngineAdapter {
       const loadZonesFromLocalStorage = (): Zone[] => {
         const savedZones = localStorage.getItem('object-synth-zones');
         if (savedZones) {
-          return JSON.parse(savedZones) as Zone[];
+          return (JSON.parse(savedZones) as Zone[]).map((zone) => ({
+            ...zone,
+            overdub: zone.overdub ?? true,
+          }));
         }
-        return [{ id: 0, x: 0, y: 0, w: 100, h: 100, type: ZONE_TYPE.DEFAULT }];
+        return [{ id: 0, x: 0, y: 0, w: 100, h: 100, type: ZONE_TYPE.DEFAULT, overdub: true }];
       };
 
       const syncZoneMotionBuffers = () => {
@@ -146,6 +152,11 @@ export class P5EngineAdapter {
           zoneActiveCounts = new Uint8Array(zones.length);
           zoneMovementFlags = Array(zones.length).fill(false);
           zoneMotionRatios = new Float32Array(zones.length);
+          zoneActiveAudioPlayers = Array.from(
+            { length: zones.length },
+            (_, i) => zoneActiveAudioPlayers[i] ?? new Set()
+          );
+          zonePlayheadAudio = Array.from({ length: zones.length }, (_, i) => zonePlayheadAudio[i] ?? null);
         }
       };
 
@@ -231,7 +242,13 @@ export class P5EngineAdapter {
 
         if (zoneIndex !== undefined) {
           const zone = zones[zoneIndex];
+          const allowsOverdub = zone?.overdub ?? true;
+          const zoneAudioPlayers = zoneActiveAudioPlayers[zoneIndex] ?? new Set<HTMLAudioElement>();
+          zoneActiveAudioPlayers[zoneIndex] = zoneAudioPlayers;
+          if (!allowsOverdub && zoneAudioPlayers.size > 0) return;
           const audio = new Audio(baseAudio.currentSrc || baseAudio.src);
+          zoneAudioPlayers.add(audio);
+          zonePlayheadAudio[zoneIndex] = audio;
           if (zone?.volume !== undefined) {
             audio.volume = zone.volume;
           }
@@ -241,6 +258,8 @@ export class P5EngineAdapter {
           audio.addEventListener(
             'ended',
             () => {
+              zoneAudioPlayers.delete(audio);
+              if (zonePlayheadAudio[zoneIndex] === audio) zonePlayheadAudio[zoneIndex] = null;
               try {
                 audio.sourceNode?.disconnect();
                 audio.pannerNode?.disconnect();
@@ -250,7 +269,11 @@ export class P5EngineAdapter {
             },
             { once: true }
           );
-          audio.play().catch((err) => console.error('Play sound failed:', err));
+          audio.play().catch((err) => {
+            zoneAudioPlayers.delete(audio);
+            if (zonePlayheadAudio[zoneIndex] === audio) zonePlayheadAudio[zoneIndex] = null;
+            console.error('Play sound failed:', err);
+          });
           return;
         }
 
@@ -497,7 +520,32 @@ export class P5EngineAdapter {
         prevGray = currGray;
       };
 
+      const getZonePlayheadProgress = (zoneIndex: number): number => {
+        const audio = zonePlayheadAudio[zoneIndex];
+        if (!audio) return 0;
+        const duration = audio.duration;
+        if (!Number.isFinite(duration) || duration <= 0) return 0;
+        return Math.min(1, Math.max(0, audio.currentTime / duration));
+      };
+
+      const drawZonePlayhead = (zone: Zone, zoneIndex: number) => {
+        if (!zone.soundId) return;
+        const progress = getZonePlayheadProgress(zoneIndex);
+        const barX = zone.x + 4;
+        const barY = zone.y + zone.h - 10;
+        const barWidth = Math.max(20, zone.w - 8);
+        const barHeight = 6;
+        p.noStroke();
+        p.fill(0, 0, 0, 120);
+        p.rect(barX, barY, barWidth, barHeight, 3);
+        if (progress > 0) {
+          p.fill('#ffd166');
+          p.rect(barX, barY, barWidth * progress, barHeight, 3);
+        }
+      };
+
       const drawZoneMotionOverlay = () => {
+
         zones.forEach((zone, zoneIndex) => {
           const active = zoneMovementFlags[zoneIndex];
           const ratio = zoneMotionRatios[zoneIndex] || 0;
@@ -520,6 +568,14 @@ export class P5EngineAdapter {
           p.textSize(12);
           p.textAlign(p.LEFT, p.TOP);
           p.text(`${Math.round(ratio * 100)}%`, zone.x + 4, zone.y + 4);
+
+          if (zone.soundId) {
+            p.textAlign(p.RIGHT, p.TOP);
+            p.textSize(18);
+            p.fill('#ffd166');
+            p.text('♪', zone.x + zone.w - 6, zone.y + 6);
+          }
+          drawZonePlayhead(zone, zoneIndex);
         });
       };
 
@@ -533,7 +589,7 @@ export class P5EngineAdapter {
       };
 
       this.commandSetZones = (nextZones) => {
-        zones = nextZones.map((zone, index) => ({ ...zone, id: index }));
+        zones = nextZones.map((zone, index) => ({ ...zone, id: index, overdub: zone.overdub ?? true }));
         saveZonesToLocalStorage();
         if (mode === MODE.PERFORMANCE) resetZoneMotionState();
       };
@@ -549,6 +605,7 @@ export class P5EngineAdapter {
           soundId: '',
           pan: 0,
           volume: 0.5,
+          overdub: true,
         }));
         saveZonesToLocalStorage();
       };
@@ -614,6 +671,7 @@ export class P5EngineAdapter {
       this.commandSetZoneSound = (index, soundId) => {
         if (!zones[index]) return;
         zones[index].soundId = soundId;
+        zonePlayheadAudio[index] = null;
         saveZonesToLocalStorage();
       };
 
@@ -626,6 +684,12 @@ export class P5EngineAdapter {
       this.commandSetZoneVolume = (index, volume) => {
         if (!zones[index]) return;
         zones[index].volume = volume;
+        saveZonesToLocalStorage();
+      };
+
+      this.commandSetZoneOverdub = (index, overdub) => {
+        if (!zones[index]) return;
+        zones[index].overdub = overdub;
         saveZonesToLocalStorage();
       };
 
@@ -745,7 +809,14 @@ export class P5EngineAdapter {
             p.textAlign(p.CENTER, p.CENTER);
             p.textSize(20);
             p.text(index.toString(), zone.x + zone.w / 2, zone.y + zone.h / 2);
+            if (zone.soundId) {
+              p.textAlign(p.RIGHT, p.TOP);
+              p.textSize(18);
+              p.fill('#ffd166');
+              p.text('♪', zone.x + zone.w - 6, zone.y + 6);
+            }
             p.noFill();
+            drawZonePlayhead(zone, index);
           });
         }
         if (showFpsDisplay) {
@@ -790,6 +861,7 @@ export class P5EngineAdapter {
         soundId: '',
         pan: 0,
         volume: 0.5,
+        overdub: true,
       } satisfies Zone;
     });
     this.commandSetZones?.(nextZones);
@@ -839,6 +911,10 @@ export class P5EngineAdapter {
 
   setZoneVolume(index: number, volume: number): void {
     this.commandSetZoneVolume?.(index, volume);
+  }
+
+  setZoneOverdub(index: number, overdub: boolean): void {
+    this.commandSetZoneOverdub?.(index, overdub);
   }
 
   async addSoundFiles(files: File[]): Promise<void> {
