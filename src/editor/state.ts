@@ -11,12 +11,13 @@ const getInitialZones = (): Zone[] => {
   const saved = readStorage('object-synth-zones');
   if (saved) {
     try {
-      return JSON.parse(saved) as Zone[];
+      const parsed = JSON.parse(saved) as Zone[];
+      return parsed.map((zone) => ({ ...zone, overdub: zone.overdub ?? true }));
     } catch {
       // fall through to defaults
     }
   }
-  return [{ id: 0, x: 0, y: 0, w: 100, h: 100, type: ZONE_TYPE.DEFAULT }];
+  return [{ id: 0, x: 0, y: 0, w: 100, h: 100, type: ZONE_TYPE.DEFAULT, overdub: true }];
 };
 
 const createInitialState = (): EditorState => ({

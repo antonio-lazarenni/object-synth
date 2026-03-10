@@ -47,6 +47,7 @@ export const ActiveAreasTab = () => {
         onSetZoneSound={editorActions.setZoneSound}
         onSetZonePan={editorActions.setZonePan}
         onSetZoneVolume={editorActions.setZoneVolume}
+        onSetZoneOverdub={editorActions.setZoneOverdub}
       />
     </div>
   );

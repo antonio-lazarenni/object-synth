@@ -27,6 +27,7 @@ export interface Zone {
   soundId?: string;
   pan?: number;
   volume?: number;
+  overdub?: boolean;
 }
 
 export interface ProcessResolution {
