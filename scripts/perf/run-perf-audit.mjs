@@ -103,6 +103,7 @@ const collectSample = async (page, scenarioName, startedAt) => {
         revokedObjectUrls: debug?.revokedObjectUrls ?? null,
         activeZoneAudioPlayers: debug?.activeZoneAudioPlayers ?? null,
         presenceActiveZones: debug?.presenceActiveZones ?? null,
+        presenceBaselineInitializedZones: debug?.presenceBaselineInitializedZones ?? null,
         defaultDetectionMode: debug?.defaultDetectionMode ?? null,
         baseSoundPlayers: debug?.baseSoundPlayers ?? null,
         streamTrackCount: debug?.streamTrackCount ?? null,
@@ -247,6 +248,25 @@ const main = async () => {
         await page.evaluate(() => {
           window.__setSyntheticMotion(false);
           window.__objectSynthDebug?.setMode('performance');
+        });
+      },
+    })
+  );
+
+  scenarios.push(
+    await runScenario(page, {
+      name: 'edit-to-performance-transition',
+      durationMs: 12000,
+      setup: async () => {
+        await page.evaluate(async () => {
+          window.__setSyntheticMotion(false);
+          window.__setSyntheticPresence(false);
+          window.__objectSynthDebug?.setDefaultDetectionMode('presence');
+          window.__objectSynthDebug?.setMode('edit');
+          await new Promise((resolve) => setTimeout(resolve, 600));
+          window.__objectSynthDebug?.setMode('performance');
+          await new Promise((resolve) => setTimeout(resolve, 800));
+          window.__setSyntheticPresence(true);
         });
       },
     })

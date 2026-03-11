@@ -36,6 +36,7 @@ declare global {
         hasBackgroundSound: boolean;
         streamTrackCount: number;
         presenceActiveZones: number;
+        presenceBaselineInitializedZones: number;
         defaultDetectionMode: DetectionMode;
       };
       setMode: (mode: MODE) => void;
@@ -621,12 +622,12 @@ export class P5EngineAdapter {
 
       const getPixelDiffThreshold = () => Math.max(1, Math.floor(imageFilterThreshold * PIXEL_DIFF_THRESHOLD_SCALE));
 
-      const detectZoneMotion = () => {
-        if (!webcamCapture || !processBuffer) return;
+      const readCurrentFrameIntoGrayBuffer = (): boolean => {
+        if (!webcamCapture || !processBuffer) return false;
         processBuffer.image(webcamCapture as unknown as p5.Image, 0, 0, processWidth, processHeight);
         processBuffer.loadPixels();
         const pix = processBuffer.pixels;
-        if (!pix || pix.length === 0) return;
+        if (!pix || pix.length === 0) return false;
 
         const pixelCount = processWidth * processHeight;
         if (currGray.length !== pixelCount) {
@@ -638,6 +639,53 @@ export class P5EngineAdapter {
             currGray[x + y * processWidth] = (pix[idx] * 30 + pix[idx + 1] * 59 + pix[idx + 2] * 11) / 100;
           }
         }
+        return true;
+      };
+
+      const getZoneBounds = (zone: Zone) => {
+        const xStart = Math.max(0, Math.floor((zone.x / p.width) * processWidth));
+        const yStart = Math.max(0, Math.floor((zone.y / p.height) * processHeight));
+        const xEnd = Math.min(processWidth, Math.ceil(((zone.x + zone.w) / p.width) * processWidth));
+        const yEnd = Math.min(processHeight, Math.ceil(((zone.y + zone.h) / p.height) * processHeight));
+        const zoneWidth = Math.max(0, xEnd - xStart);
+        const zoneHeight = Math.max(0, yEnd - yStart);
+        return {
+          xStart,
+          yStart,
+          xEnd,
+          yEnd,
+          zonePixelCount: zoneWidth * zoneHeight,
+        };
+      };
+
+      const captureZonePresenceBaselinesFromCurrentFrame = (): boolean => {
+        const ready = readCurrentFrameIntoGrayBuffer();
+        if (!ready) return false;
+        syncZoneMotionBuffers();
+        zones.forEach((zone, zoneIndex) => {
+          const { xStart, yStart, xEnd, yEnd, zonePixelCount } = getZoneBounds(zone);
+          if (zonePixelCount === 0) {
+            zonePresenceBaselines[zoneIndex] = null;
+            zonePresenceEmptyCounts[zoneIndex] = 0;
+            return;
+          }
+          const zoneBaseline = new Uint8Array(zonePixelCount);
+          let localIndex = 0;
+          for (let y = yStart; y < yEnd; y++) {
+            for (let x = xStart; x < xEnd; x++) {
+              zoneBaseline[localIndex] = currGray[x + y * processWidth];
+              localIndex += 1;
+            }
+          }
+          zonePresenceBaselines[zoneIndex] = zoneBaseline;
+          zonePresenceEmptyCounts[zoneIndex] = 0;
+        });
+        return true;
+      };
+
+      const detectZoneMotion = () => {
+        const ready = readCurrentFrameIntoGrayBuffer();
+        if (!ready) return;
 
         if (!prevGray) {
           prevGray = currGray.slice();
@@ -647,13 +695,7 @@ export class P5EngineAdapter {
         syncZoneMotionBuffers();
         const pixelDiffThreshold = getPixelDiffThreshold();
         zones.forEach((zone, zoneIndex) => {
-          const xStart = Math.max(0, Math.floor((zone.x / p.width) * processWidth));
-          const yStart = Math.max(0, Math.floor((zone.y / p.height) * processHeight));
-          const xEnd = Math.min(processWidth, Math.ceil(((zone.x + zone.w) / p.width) * processWidth));
-          const yEnd = Math.min(processHeight, Math.ceil(((zone.y + zone.h) / p.height) * processHeight));
-          const zoneWidth = Math.max(0, xEnd - xStart);
-          const zoneHeight = Math.max(0, yEnd - yStart);
-          const zonePixelCount = zoneWidth * zoneHeight;
+          const { xStart, yStart, xEnd, yEnd, zonePixelCount } = getZoneBounds(zone);
           if (zonePixelCount === 0) {
             zoneMotionRatios[zoneIndex] = 0;
             zonePresenceRatios[zoneIndex] = 0;
@@ -812,6 +854,7 @@ export class P5EngineAdapter {
           isDragging = false;
           draggedZoneIndex = null;
           resetZoneMotionState();
+          captureZonePresenceBaselinesFromCurrentFrame();
         }
         applyBackgroundSoundMode();
         this.emitState({ mode });
@@ -1010,6 +1053,8 @@ export class P5EngineAdapter {
               hasBackgroundSound: Boolean(backgroundSound),
               streamTrackCount: currentStream?.getTracks().length ?? 0,
               presenceActiveZones: zonePresenceFlags.filter(Boolean).length,
+              presenceBaselineInitializedZones: zonePresenceBaselines.filter((baseline) => Boolean(baseline?.length))
+                .length,
               defaultDetectionMode,
             }),
             setMode: (nextMode) => this.setMode(nextMode),

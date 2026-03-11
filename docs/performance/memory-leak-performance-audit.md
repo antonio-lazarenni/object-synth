@@ -44,10 +44,11 @@ The following were implemented directly in `src/engine/p5Engine.ts`:
 - Reused grayscale frame buffer in `detectZoneMotion` to lower allocation churn.
 - Added presence detection mode with per-zone baseline snapshots (current frame vs baseline) and hysteresis thresholds.
 - Added global detection mode default with per-zone override (`motion`/`presence`) and optional `stopOnLeave` behavior.
+- Added transition-time baseline capture on `edit -> performance` so presence mode starts from an immediate snapshot.
 - Added guarded baseline refresh (empty-frame gated) so static subjects are not quickly learned into the zone baseline.
 - Added optional perf debug surface (`localStorage['object-synth-perf-debug']="true"`) to expose:
   - fps, detect-motion timing EWMA, draw timing EWMA
-  - presence active-zone count and default detection mode
+  - presence active-zone count, baseline-initialized zone count, and default detection mode
   - object URL created/revoked counts
   - active audio player counts and stream track count
 - Added synthetic sound creation helper (debug-only) for reproducible sound-library stress checks.
@@ -88,6 +89,7 @@ Interpretation:
 - `detectZoneMotion` median <= 12 ms at `160x120`
 - Object URL balance after resets: `created - revoked <= 1`
 - Presence-intermittent scenario should show non-zero `presenceActiveZones` during presence windows.
+- Edit-to-performance transition scenario should initialize most/all zone baselines within first sampled seconds.
 
 ## How To Run
 
