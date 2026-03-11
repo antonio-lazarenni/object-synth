@@ -18,25 +18,27 @@ export const ActiveAreasTab = () => {
   const sounds = useEditorStore((state) => state.sounds);
 
   return (
-    <div className="space-y-4">
-      <CameraSelector
-        devices={videoDevices}
-        selectedDeviceId={selectedVideoDeviceId}
-        onChange={editorActions.setSelectedVideoDevice}
-      />
-      <PerformanceControls
-        processWidth={processWidth}
-        processHeight={processHeight}
-        showFpsDisplay={showFpsDisplay}
-        onChangeResolution={editorActions.setProcessResolution}
-        onToggleFps={editorActions.setShowFps}
-      />
-      <ThresholdControls
-        imageFilterThreshold={imageFilterThreshold}
-        movementThreshold={movementThreshold}
-        onImageFilterThresholdChange={editorActions.setImageFilterThreshold}
-        onMovementThresholdChange={editorActions.setMovementThreshold}
-      />
+    <div className="space-y-3 md:space-y-4">
+      <div className="grid gap-3 md:gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        <CameraSelector
+          devices={videoDevices}
+          selectedDeviceId={selectedVideoDeviceId}
+          onChange={editorActions.setSelectedVideoDevice}
+        />
+        <PerformanceControls
+          processWidth={processWidth}
+          processHeight={processHeight}
+          showFpsDisplay={showFpsDisplay}
+          onChangeResolution={editorActions.setProcessResolution}
+          onToggleFps={editorActions.setShowFps}
+        />
+        <ThresholdControls
+          imageFilterThreshold={imageFilterThreshold}
+          movementThreshold={movementThreshold}
+          onImageFilterThresholdChange={editorActions.setImageFilterThreshold}
+          onMovementThresholdChange={editorActions.setMovementThreshold}
+        />
+      </div>
       <ZonesPanel
         zones={zones}
         sounds={sounds}
