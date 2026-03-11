@@ -13,7 +13,7 @@ export interface SoundFile {
   id: string;
   name: string;
   type: string;
-  data: ArrayBuffer;
+  data: Blob | ArrayBuffer;
   url?: string;
 }
 

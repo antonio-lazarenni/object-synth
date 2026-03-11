@@ -129,7 +129,8 @@ export class P5EngineAdapter {
 
       const DB_NAME = 'soundLibraryDB';
       const DB_VERSION = 1;
-      let db: IDBDatabase;
+      let db: IDBDatabase | null = null;
+      let dbInitPromise: Promise<void> | null = null;
 
       const saveZonesToLocalStorage = () => {
         localStorage.setItem('object-synth-zones', JSON.stringify(zones));
@@ -185,9 +186,23 @@ export class P5EngineAdapter {
         });
       };
 
+      const ensureDBReady = async (): Promise<void> => {
+        if (db) return;
+        if (!dbInitPromise) {
+          dbInitPromise = initDB().catch((err) => {
+            dbInitPromise = null;
+            throw err;
+          });
+        }
+        await dbInitPromise;
+      };
+
       const saveSoundToDB = async (sound: SoundFile) => {
+        await ensureDBReady();
+        if (!db) throw new Error('IndexedDB not initialized');
+        const database = db;
         return new Promise((resolve, reject) => {
-          const transaction = db.transaction(['sounds'], 'readwrite');
+          const transaction = database.transaction(['sounds'], 'readwrite');
           const store = transaction.objectStore('sounds');
           const request = store.put(sound);
           request.onsuccess = () => resolve(request.result);
@@ -196,8 +211,11 @@ export class P5EngineAdapter {
       };
 
       const deleteSoundFromDB = async (soundId: string) => {
+        await ensureDBReady();
+        if (!db) throw new Error('IndexedDB not initialized');
+        const database = db;
         return new Promise((resolve, reject) => {
-          const transaction = db.transaction(['sounds'], 'readwrite');
+          const transaction = database.transaction(['sounds'], 'readwrite');
           const store = transaction.objectStore('sounds');
           const request = store.delete(soundId);
           request.onsuccess = () => resolve(request.result);
@@ -206,8 +224,11 @@ export class P5EngineAdapter {
       };
 
       const deleteAllSoundsFromDB = async () => {
+        await ensureDBReady();
+        if (!db) throw new Error('IndexedDB not initialized');
+        const database = db;
         return new Promise((resolve, reject) => {
-          const transaction = db.transaction(['sounds'], 'readwrite');
+          const transaction = database.transaction(['sounds'], 'readwrite');
           const store = transaction.objectStore('sounds');
           const request = store.clear();
           request.onsuccess = () => resolve(request.result);
@@ -300,22 +321,34 @@ export class P5EngineAdapter {
       };
 
       const loadSoundsFromDB = async () => {
+        await ensureDBReady();
+        if (!db) throw new Error('IndexedDB not initialized');
+        const database = db;
         return new Promise((resolve, reject) => {
-          const transaction = db.transaction(['sounds'], 'readonly');
+          const transaction = database.transaction(['sounds'], 'readonly');
           const store = transaction.objectStore('sounds');
           const request = store.getAll();
           request.onsuccess = async () => {
             const sounds: SoundFile[] = request.result;
             for (const sound of sounds) {
               try {
-                const blob = new Blob([sound.data], { type: sound.type });
+                const isLegacyArrayBuffer = sound.data instanceof ArrayBuffer;
+                const blob = sound.data instanceof Blob ? sound.data : new Blob([sound.data], { type: sound.type });
                 const url = URL.createObjectURL(blob);
                 const audio = new Audio(url);
                 await new Promise((audioResolve, audioReject) => {
                   audio.addEventListener('loadeddata', audioResolve, { once: true });
                   audio.addEventListener('error', audioReject, { once: true });
                 });
-                soundLibrary.push({ ...sound, url });
+                if (isLegacyArrayBuffer) {
+                  // Best-effort lazy migration: rewrite legacy payloads as Blob on successful load.
+                  try {
+                    await saveSoundToDB({ ...sound, data: blob });
+                  } catch (migrateErr) {
+                    console.error(`Failed to migrate sound ${sound.name} to Blob:`, migrateErr);
+                  }
+                }
+                soundLibrary.push({ ...sound, data: blob, url });
                 soundPlayers.set(sound.id, audio);
               } catch (err) {
                 console.error(`Failed to load sound ${sound.name}:`, err);
@@ -348,20 +381,14 @@ export class P5EngineAdapter {
         if (!file.type.startsWith('audio/')) return;
         const soundId = `sound-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
         try {
-          const arrayBuffer = await new Promise<ArrayBuffer>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as ArrayBuffer);
-            reader.onerror = reject;
-            reader.readAsArrayBuffer(file);
-          });
-          const blob = new Blob([arrayBuffer], { type: file.type });
+          const blob = file.slice(0, file.size, file.type);
           const url = URL.createObjectURL(blob);
           const audio = new Audio(url);
           await new Promise((resolve, reject) => {
             audio.addEventListener('loadeddata', resolve, { once: true });
             audio.addEventListener('error', reject, { once: true });
           });
-          const sound: SoundFile = { id: soundId, name: file.name, type: file.type, data: arrayBuffer };
+          const sound: SoundFile = { id: soundId, name: file.name, type: file.type, data: blob };
           await saveSoundToDB(sound);
           soundLibrary.push({ ...sound, url });
           soundPlayers.set(soundId, audio);
@@ -582,6 +609,8 @@ export class P5EngineAdapter {
       this.commandSetMode = (nextMode) => {
         mode = nextMode;
         if (mode === MODE.PERFORMANCE) {
+          isDragging = false;
+          draggedZoneIndex = null;
           resetZoneMotionState();
         }
         applyBackgroundSoundMode();
@@ -694,6 +723,7 @@ export class P5EngineAdapter {
       };
 
       this.commandAddSoundFiles = async (files) => {
+        await ensureDBReady();
         for (const file of files) {
           await handleFileUpload(file);
         }
@@ -702,6 +732,7 @@ export class P5EngineAdapter {
       this.commandLoadSoundsFromDirectory = loadSoundsFromDirectory;
 
       this.commandResetSoundLibrary = async () => {
+        await ensureDBReady();
         soundLibrary = [];
         soundPlayers.clear();
         await deleteAllSoundsFromDB();
@@ -718,7 +749,7 @@ export class P5EngineAdapter {
         await initCaptureDevice(selectedVideoDeviceId || undefined);
 
         try {
-          await initDB();
+          await ensureDBReady();
           await loadSoundsFromDB();
         } catch (err) {
           console.error('Failed to load sounds from IndexedDB:', err);
@@ -741,6 +772,7 @@ export class P5EngineAdapter {
       };
 
       p.mousePressed = () => {
+        if (mode !== MODE.EDIT) return;
         const hoveredIndex = zones.findIndex(
           (zone) =>
             p.mouseX > zone.x &&
@@ -756,12 +788,14 @@ export class P5EngineAdapter {
       };
 
       p.mouseReleased = () => {
+        if (mode !== MODE.EDIT) return;
         isDragging = false;
         draggedZoneIndex = null;
         saveZonesToLocalStorage();
       };
 
       p.keyPressed = () => {
+        if (mode !== MODE.EDIT) return;
         if (lastDraggedZoneIndex === null) return;
         switch (p.key) {
           case 'ArrowUp':
@@ -780,7 +814,6 @@ export class P5EngineAdapter {
         zones[lastDraggedZoneIndex].w = Math.max(20, zones[lastDraggedZoneIndex].w);
         zones[lastDraggedZoneIndex].h = Math.max(20, zones[lastDraggedZoneIndex].h);
         saveZonesToLocalStorage();
-        if (mode === MODE.PERFORMANCE) resetZoneMotionState();
       };
 
       p.draw = () => {

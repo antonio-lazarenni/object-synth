@@ -49,7 +49,11 @@ export const SoundLibraryPanel = ({
         >
           Select sounds directory
         </button>
-        <button className="rounded bg-red-700 px-3 py-1 text-sm hover:bg-red-600" onClick={onReset}>
+        <button
+          className="rounded bg-red-700 px-3 py-1 text-sm hover:bg-red-600"
+          onClick={onReset}
+          type="button"
+        >
           Reset library
         </button>
       </div>
@@ -90,10 +94,14 @@ export const SoundLibraryPanel = ({
           <div key={sound.id} className="flex items-center justify-between gap-2 rounded bg-emerald-950 p-2">
             <span className="truncate text-sm">{sound.name}</span>
             <div className="flex gap-2">
-              <button className="rounded bg-sky-700 px-2 py-1 text-xs" onClick={() => onPlay(sound.id)}>
+              <button className="rounded bg-sky-700 px-2 py-1 text-xs" onClick={() => onPlay(sound.id)} type="button">
                 Play
               </button>
-              <button className="rounded bg-red-700 px-2 py-1 text-xs" onClick={() => onDelete(sound.id)}>
+              <button
+                className="rounded bg-red-700 px-2 py-1 text-xs"
+                onClick={() => onDelete(sound.id)}
+                type="button"
+              >
                 Delete
               </button>
             </div>

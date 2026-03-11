@@ -1,13 +1,11 @@
 import { editorActions } from '../controller';
 import { useEditorStore } from '../state';
 import { CameraSelector } from './CameraSelector';
-import { ModeToggle } from './ModeToggle';
 import { PerformanceControls } from './PerformanceControls';
 import { ThresholdControls } from './ThresholdControls';
 import { ZonesPanel } from './ZonesPanel';
 
 export const ActiveAreasTab = () => {
-  const mode = useEditorStore((state) => state.mode);
   const videoDevices = useEditorStore((state) => state.videoDevices);
   const selectedVideoDeviceId = useEditorStore((state) => state.selectedVideoDeviceId);
   const processWidth = useEditorStore((state) => state.processWidth);
@@ -20,7 +18,6 @@ export const ActiveAreasTab = () => {
 
   return (
     <div className="space-y-4">
-      <ModeToggle mode={mode} onChange={editorActions.setMode} />
       <CameraSelector
         devices={videoDevices}
         selectedDeviceId={selectedVideoDeviceId}
