@@ -360,8 +360,10 @@ const main = async () => {
   };
 
   const slug = nowSlug();
-  const jsonPath = path.join(process.cwd(), 'perf-artifacts', `perf-baseline-${slug}.json`);
-  const mdPath = path.join(process.cwd(), 'perf-artifacts', `perf-baseline-${slug}.md`);
+  const artifactsDir = path.join(process.cwd(), 'perf-artifacts');
+  await fs.mkdir(artifactsDir, { recursive: true });
+  const jsonPath = path.join(artifactsDir, `perf-baseline-${slug}.json`);
+  const mdPath = path.join(artifactsDir, `perf-baseline-${slug}.md`);
   await fs.writeFile(jsonPath, JSON.stringify(result, null, 2), 'utf8');
   await writeReportMarkdown(mdPath, result);
   await browser.close();
