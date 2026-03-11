@@ -47,6 +47,7 @@ export const ActiveAreasTab = () => {
         onResetZones={editorActions.resetZones}
         onSetDefaultDetectionMode={editorActions.setDefaultDetectionMode}
         onSetZoneSound={editorActions.setZoneSound}
+        onPreviewZoneSound={editorActions.previewZoneSound}
         onSetZonePan={editorActions.setZonePan}
         onSetZoneVolume={editorActions.setZoneVolume}
         onSetZoneOverdub={editorActions.setZoneOverdub}

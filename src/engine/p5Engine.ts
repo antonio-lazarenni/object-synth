@@ -809,6 +809,15 @@ export class P5EngineAdapter {
         }
       };
 
+      const isWithinZoneNote = (zone: Zone, x: number, y: number): boolean => {
+        if (!zone.soundId) return false;
+        const noteWidth = 24;
+        const noteHeight = 24;
+        const noteLeft = zone.x + zone.w - noteWidth;
+        const noteTop = zone.y;
+        return x >= noteLeft && x <= noteLeft + noteWidth && y >= noteTop && y <= noteTop + noteHeight;
+      };
+
       const drawZoneMotionOverlay = () => {
 
         zones.forEach((zone, zoneIndex) => {
@@ -1105,6 +1114,15 @@ export class P5EngineAdapter {
 
       p.mousePressed = () => {
         if (mode !== MODE.EDIT) return;
+        for (let i = zones.length - 1; i >= 0; i -= 1) {
+          const zone = zones[i];
+          if (!isWithinZoneNote(zone, p.mouseX, p.mouseY)) continue;
+          if (zone.soundId) {
+            playSound(zone.soundId, i);
+            lastDraggedZoneIndex = i;
+          }
+          return;
+        }
         const hoveredIndex = zones.findIndex(
           (zone) =>
             p.mouseX > zone.x &&
@@ -1360,5 +1378,11 @@ export class P5EngineAdapter {
 
   playSound(soundId: string): void {
     this.commandPlaySound?.(soundId);
+  }
+
+  previewZoneSound(index: number): void {
+    const zone = this.state.zones[index];
+    if (!zone?.soundId) return;
+    this.commandPlaySound?.(zone.soundId, index);
   }
 }

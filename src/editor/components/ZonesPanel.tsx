@@ -8,6 +8,7 @@ type Props = {
   onResetZones: () => void;
   onSetDefaultDetectionMode: (mode: DetectionMode) => void;
   onSetZoneSound: (index: number, soundId: string) => void;
+  onPreviewZoneSound: (index: number) => void;
   onSetZonePan: (index: number, pan: number) => void;
   onSetZoneVolume: (index: number, volume: number) => void;
   onSetZoneOverdub: (index: number, overdub: boolean) => void;
@@ -23,6 +24,7 @@ export const ZonesPanel = ({
   onResetZones,
   onSetDefaultDetectionMode,
   onSetZoneSound,
+  onPreviewZoneSound,
   onSetZonePan,
   onSetZoneVolume,
   onSetZoneOverdub,
@@ -78,18 +80,28 @@ export const ZonesPanel = ({
               <div className="grid grid-cols-1 gap-2.5 md:gap-3 lg:grid-cols-2 xl:grid-cols-3">
                 <label className="form-control">
                   <span className="label-text mb-1">Sound</span>
-                  <select
-                    className="select select-bordered select-sm md:select-md w-full"
-                    value={zone.soundId || ''}
-                    onChange={(event) => onSetZoneSound(index, event.target.value)}
-                  >
-                    <option value="">No sound</option>
-                    {sounds.map((sound) => (
-                      <option key={sound.id} value={sound.id}>
-                        {sound.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-end gap-2">
+                    <select
+                      className="select select-bordered select-sm md:select-md w-full"
+                      value={zone.soundId || ''}
+                      onChange={(event) => onSetZoneSound(index, event.target.value)}
+                    >
+                      <option value="">No sound</option>
+                      {sounds.map((sound) => (
+                        <option key={sound.id} value={sound.id}>
+                          {sound.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="btn btn-sm md:btn-md btn-outline"
+                      onClick={() => onPreviewZoneSound(index)}
+                      disabled={!zone.soundId}
+                    >
+                      Preview
+                    </button>
+                  </div>
                 </label>
 
                 <div className="form-control gap-1.5">
