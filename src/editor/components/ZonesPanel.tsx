@@ -100,7 +100,7 @@ export const ZonesPanel = ({
                         onClick={() => onPreviewZoneSound(index)}
                         disabled={!zone.soundId}
                       >
-                        Preview
+                        ▷
                       </button>
                     </div>
                   </label>
