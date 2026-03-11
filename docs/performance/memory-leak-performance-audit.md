@@ -15,6 +15,7 @@ This pass focused on runtime behavior in `src/engine/p5Engine.ts` and lifecycle 
 ### High
 
 - `detectZoneMotion` performs zone-area nested loops every frame. CPU cost scales with both zone count and zone size.
+- Presence detection introduces per-zone baseline comparisons; baseline refresh logic must avoid absorbing stationary subjects.
 - Camera capture reinitialization (`initCaptureDevice`) can accumulate resources if previous capture elements are not cleaned.
 - Global audio graph lifetime (`window.audioContext`) can outlive the engine lifecycle if not closed.
 
@@ -41,8 +42,12 @@ The following were implemented directly in `src/engine/p5Engine.ts`:
   - increments created/revoked counters
   - revokes URLs during single delete, full reset, and destroy
 - Reused grayscale frame buffer in `detectZoneMotion` to lower allocation churn.
+- Added presence detection mode with per-zone baseline snapshots (current frame vs baseline) and hysteresis thresholds.
+- Added global detection mode default with per-zone override (`motion`/`presence`) and optional `stopOnLeave` behavior.
+- Added guarded baseline refresh (empty-frame gated) so static subjects are not quickly learned into the zone baseline.
 - Added optional perf debug surface (`localStorage['object-synth-perf-debug']="true"`) to expose:
   - fps, detect-motion timing EWMA, draw timing EWMA
+  - presence active-zone count and default detection mode
   - object URL created/revoked counts
   - active audio player counts and stream track count
 - Added synthetic sound creation helper (debug-only) for reproducible sound-library stress checks.
@@ -82,6 +87,7 @@ Interpretation:
 - Heap delta <= 12 MB in 45s steady-state scenarios
 - `detectZoneMotion` median <= 12 ms at `160x120`
 - Object URL balance after resets: `created - revoked <= 1`
+- Presence-intermittent scenario should show non-zero `presenceActiveZones` during presence windows.
 
 ## How To Run
 

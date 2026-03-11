@@ -3,6 +3,7 @@ import {
   MODE,
   PROCESS_RESOLUTIONS,
   ZONE_TYPE,
+  type DetectionMode,
   type EditorState,
   type SoundFile,
   type Zone,
@@ -12,6 +13,11 @@ const RESIZE_SPEED = 10;
 const PIXEL_DIFF_THRESHOLD_SCALE = 100;
 const MIN_ACTIVE_FRAMES = 2;
 const PERF_DEBUG_STORAGE_KEY = 'object-synth-perf-debug';
+const PRESENCE_ENTER_THRESHOLD = 0.08;
+const PRESENCE_EXIT_THRESHOLD = 0.04;
+const PRESENCE_EMPTY_THRESHOLD = 0.01;
+const PRESENCE_EMPTY_FRAMES_TO_UPDATE_BASELINE = 8;
+const PRESENCE_BASELINE_BLEND = 0.1;
 
 declare global {
   interface Window {
@@ -29,11 +35,14 @@ declare global {
         baseSoundPlayers: number;
         hasBackgroundSound: boolean;
         streamTrackCount: number;
+        presenceActiveZones: number;
+        defaultDetectionMode: DetectionMode;
       };
       setMode: (mode: MODE) => void;
       setProcessResolution: (w: number, h: number) => void;
       setActiveZoneCount: (count: number) => void;
       setSelectedVideoDevice: (deviceId: string | null) => Promise<void>;
+      setDefaultDetectionMode: (mode: DetectionMode) => void;
       addSyntheticSounds: (count: number) => Promise<void>;
       resetSoundLibrary: () => Promise<void>;
     };
@@ -81,6 +90,8 @@ export class P5EngineAdapter {
     showFpsDisplay: localStorage.getItem('show-fps') === 'true',
     imageFilterThreshold: Number(localStorage.getItem('image-filter-threshold') || '0.3'),
     movementThreshold: Number(localStorage.getItem('movement-threshold') || '0.02'),
+    defaultDetectionMode:
+      localStorage.getItem('default-detection-mode') === 'presence' ? 'presence' : 'motion',
     backgroundSoundId: null,
     backgroundVolume: Number(localStorage.getItem('background-sound-volume') || '0.5'),
   };
@@ -93,12 +104,15 @@ export class P5EngineAdapter {
   private commandSetShowFps: ((show: boolean) => void) | null = null;
   private commandSetImageFilterThreshold: ((value: number) => void) | null = null;
   private commandSetMovementThreshold: ((value: number) => void) | null = null;
+  private commandSetDefaultDetectionMode: ((mode: DetectionMode) => void) | null = null;
   private commandSetBackgroundSound: ((soundId: string | null) => void) | null = null;
   private commandSetBackgroundVolume: ((volume: number) => void) | null = null;
   private commandSetZoneSound: ((index: number, soundId: string) => void) | null = null;
   private commandSetZonePan: ((index: number, pan: number) => void) | null = null;
   private commandSetZoneVolume: ((index: number, volume: number) => void) | null = null;
   private commandSetZoneOverdub: ((index: number, overdub: boolean) => void) | null = null;
+  private commandSetZoneDetectionMode: ((index: number, mode: DetectionMode | null) => void) | null = null;
+  private commandSetZoneStopOnLeave: ((index: number, enabled: boolean) => void) | null = null;
   private commandAddSoundFiles: ((files: File[]) => Promise<void>) | null = null;
   private commandLoadSoundsFromDirectory: ((dirHandle: FileSystemDirectoryHandle) => Promise<void>) | null = null;
   private commandResetSoundLibrary: (() => Promise<void>) | null = null;
@@ -126,12 +140,17 @@ export class P5EngineAdapter {
       let mode: MODE = MODE.EDIT;
       let imageFilterThreshold = this.state.imageFilterThreshold;
       let movementThreshold = this.state.movementThreshold;
+      let defaultDetectionMode: DetectionMode = this.state.defaultDetectionMode;
 
       let prevGray: Uint8Array | null = null;
       let currGray = new Uint8Array(0);
       let zoneActiveCounts = new Uint8Array(0);
       let zoneMovementFlags: boolean[] = [];
       let zoneMotionRatios = new Float32Array(0);
+      let zonePresenceFlags: boolean[] = [];
+      let zonePresenceRatios = new Float32Array(0);
+      let zonePresenceEmptyCounts = new Uint8Array(0);
+      let zonePresenceBaselines: Array<Uint8Array | null> = [];
 
       let soundLibrary: SoundFile[] = [];
       const soundPlayers: Map<string, HTMLAudioElement> = new Map();
@@ -210,6 +229,13 @@ export class P5EngineAdapter {
         backgroundSoundId = null;
       };
 
+      const normalizeZone = (zone: Zone, index: number): Zone => ({
+        ...zone,
+        id: index,
+        overdub: zone.overdub ?? true,
+        stopOnLeave: zone.stopOnLeave ?? false,
+      });
+
       const saveZonesToLocalStorage = () => {
         localStorage.setItem('object-synth-zones', JSON.stringify(zones));
         this.emitState({ zones: [...zones] });
@@ -218,12 +244,9 @@ export class P5EngineAdapter {
       const loadZonesFromLocalStorage = (): Zone[] => {
         const savedZones = localStorage.getItem('object-synth-zones');
         if (savedZones) {
-          return (JSON.parse(savedZones) as Zone[]).map((zone) => ({
-            ...zone,
-            overdub: zone.overdub ?? true,
-          }));
+          return (JSON.parse(savedZones) as Zone[]).map((zone, index) => normalizeZone(zone, index));
         }
-        return [{ id: 0, x: 0, y: 0, w: 100, h: 100, type: ZONE_TYPE.DEFAULT, overdub: true }];
+        return [normalizeZone({ id: 0, x: 0, y: 0, w: 100, h: 100, type: ZONE_TYPE.DEFAULT }, 0)];
       };
 
       const syncZoneMotionBuffers = () => {
@@ -231,6 +254,10 @@ export class P5EngineAdapter {
           zoneActiveCounts = new Uint8Array(zones.length);
           zoneMovementFlags = Array(zones.length).fill(false);
           zoneMotionRatios = new Float32Array(zones.length);
+          zonePresenceFlags = Array(zones.length).fill(false);
+          zonePresenceRatios = new Float32Array(zones.length);
+          zonePresenceEmptyCounts = new Uint8Array(zones.length);
+          zonePresenceBaselines = Array.from({ length: zones.length }, (_, i) => zonePresenceBaselines[i] ?? null);
           zoneActiveAudioPlayers = Array.from(
             { length: zones.length },
             (_, i) => zoneActiveAudioPlayers[i] ?? new Set()
@@ -245,6 +272,10 @@ export class P5EngineAdapter {
         zoneActiveCounts.fill(0);
         zoneMovementFlags.fill(false);
         zoneMotionRatios.fill(0);
+        zonePresenceFlags.fill(false);
+        zonePresenceRatios.fill(0);
+        zonePresenceEmptyCounts.fill(0);
+        zonePresenceBaselines = Array.from({ length: zones.length }, () => null);
       };
 
       const initDB = (): Promise<void> => {
@@ -334,6 +365,20 @@ export class P5EngineAdapter {
           console.error('Error setting audio panning:', err);
         }
       };
+
+      const stopZoneAudio = (zoneIndex: number) => {
+        const zoneAudioPlayers = zoneActiveAudioPlayers[zoneIndex];
+        if (!zoneAudioPlayers) return;
+        zoneAudioPlayers.forEach((audio) => {
+          audio.pause();
+          disconnectAudioGraph(audio);
+        });
+        zoneAudioPlayers.clear();
+        zonePlayheadAudio[zoneIndex] = null;
+      };
+
+      const resolveZoneDetectionMode = (zone: Zone): DetectionMode =>
+        zone.detectionMode ?? defaultDetectionMode;
 
       const playSound = (soundId: string, zoneIndex?: number) => {
         const baseAudio = soundPlayers.get(soundId);
@@ -596,9 +641,8 @@ export class P5EngineAdapter {
 
         if (!prevGray) {
           prevGray = currGray.slice();
-          return;
         }
-        const previousGray = prevGray;
+        const previousGray = prevGray ?? currGray;
 
         syncZoneMotionBuffers();
         const pixelDiffThreshold = getPixelDiffThreshold();
@@ -607,31 +651,92 @@ export class P5EngineAdapter {
           const yStart = Math.max(0, Math.floor((zone.y / p.height) * processHeight));
           const xEnd = Math.min(processWidth, Math.ceil(((zone.x + zone.w) / p.width) * processWidth));
           const yEnd = Math.min(processHeight, Math.ceil(((zone.y + zone.h) / p.height) * processHeight));
-          let changed = 0;
+          const zoneWidth = Math.max(0, xEnd - xStart);
+          const zoneHeight = Math.max(0, yEnd - yStart);
+          const zonePixelCount = zoneWidth * zoneHeight;
+          if (zonePixelCount === 0) {
+            zoneMotionRatios[zoneIndex] = 0;
+            zonePresenceRatios[zoneIndex] = 0;
+            zoneActiveCounts[zoneIndex] = 0;
+            zoneMovementFlags[zoneIndex] = false;
+            zonePresenceFlags[zoneIndex] = false;
+            return;
+          }
+
+          const zoneCurrentGray = new Uint8Array(zonePixelCount);
+          const baselineGray = zonePresenceBaselines[zoneIndex];
+          let motionChanged = 0;
+          let presenceChanged = 0;
           let total = 0;
           for (let y = yStart; y < yEnd; y++) {
             for (let x = xStart; x < xEnd; x++) {
               const i = x + y * processWidth;
-              if (Math.abs(currGray[i] - previousGray[i]) > pixelDiffThreshold) changed += 1;
+              const localIndex = total;
+              const currentValue = currGray[i];
+              zoneCurrentGray[localIndex] = currentValue;
+              if (Math.abs(currentValue - previousGray[i]) > pixelDiffThreshold) motionChanged += 1;
+              if (baselineGray && baselineGray.length === zonePixelCount) {
+                if (Math.abs(currentValue - baselineGray[localIndex]) > pixelDiffThreshold) presenceChanged += 1;
+              }
               total += 1;
             }
           }
-          const ratio = total > 0 ? changed / total : 0;
-          zoneMotionRatios[zoneIndex] = ratio;
-          const isCurrentlyActive = ratio > movementThreshold;
+
+          const motionRatio = total > 0 ? motionChanged / total : 0;
+          zoneMotionRatios[zoneIndex] = motionRatio;
+
+          let presenceRatio = 0;
+          if (!baselineGray || baselineGray.length !== zonePixelCount) {
+            zonePresenceBaselines[zoneIndex] = zoneCurrentGray.slice();
+            zonePresenceEmptyCounts[zoneIndex] = 0;
+          } else {
+            presenceRatio = total > 0 ? presenceChanged / total : 0;
+            if (presenceRatio <= PRESENCE_EMPTY_THRESHOLD) {
+              zonePresenceEmptyCounts[zoneIndex] = Math.min(255, zonePresenceEmptyCounts[zoneIndex] + 1);
+              if (zonePresenceEmptyCounts[zoneIndex] >= PRESENCE_EMPTY_FRAMES_TO_UPDATE_BASELINE) {
+                for (let i = 0; i < zonePixelCount; i++) {
+                  baselineGray[i] = Math.round(
+                    baselineGray[i] * (1 - PRESENCE_BASELINE_BLEND) + zoneCurrentGray[i] * PRESENCE_BASELINE_BLEND
+                  );
+                }
+              }
+            } else {
+              zonePresenceEmptyCounts[zoneIndex] = 0;
+            }
+          }
+          zonePresenceRatios[zoneIndex] = presenceRatio;
+
+          const modeForZone = resolveZoneDetectionMode(zone);
+          const wasActive = zoneMovementFlags[zoneIndex];
+          let isCurrentlyActive = false;
+
+          if (modeForZone === 'presence') {
+            const wasPresent = zonePresenceFlags[zoneIndex];
+            const isPresent =
+              presenceRatio > PRESENCE_ENTER_THRESHOLD ||
+              (wasPresent && presenceRatio > PRESENCE_EXIT_THRESHOLD);
+            zonePresenceFlags[zoneIndex] = isPresent;
+            isCurrentlyActive = isPresent;
+          } else {
+            zonePresenceFlags[zoneIndex] = false;
+            isCurrentlyActive = motionRatio > movementThreshold;
+          }
+
           if (isCurrentlyActive) {
             zoneActiveCounts[zoneIndex] = Math.min(255, zoneActiveCounts[zoneIndex] + 1);
           } else {
             zoneActiveCounts[zoneIndex] = 0;
             zoneMovementFlags[zoneIndex] = false;
           }
-          const becameActive =
-            !zoneMovementFlags[zoneIndex] && zoneActiveCounts[zoneIndex] >= MIN_ACTIVE_FRAMES;
+
+          const becameActive = !zoneMovementFlags[zoneIndex] && zoneActiveCounts[zoneIndex] >= MIN_ACTIVE_FRAMES;
           if (becameActive) {
             zoneMovementFlags[zoneIndex] = true;
-            if (zone.soundId) {
-              playSound(zone.soundId, zoneIndex);
-            }
+            if (zone.soundId) playSound(zone.soundId, zoneIndex);
+          }
+
+          if (wasActive && !isCurrentlyActive && modeForZone === 'presence' && (zone.stopOnLeave ?? false)) {
+            stopZoneAudio(zoneIndex);
           }
         });
 
@@ -665,8 +770,12 @@ export class P5EngineAdapter {
       const drawZoneMotionOverlay = () => {
 
         zones.forEach((zone, zoneIndex) => {
+          const modeForZone = resolveZoneDetectionMode(zone);
           const active = zoneMovementFlags[zoneIndex];
-          const ratio = zoneMotionRatios[zoneIndex] || 0;
+          const ratio =
+            modeForZone === 'presence'
+              ? (zonePresenceRatios[zoneIndex] ?? 0)
+              : (zoneMotionRatios[zoneIndex] ?? 0);
           if (active) {
             p.fill(0, 255, 0, 70);
             p.noStroke();
@@ -685,7 +794,7 @@ export class P5EngineAdapter {
 
           p.textSize(12);
           p.textAlign(p.LEFT, p.TOP);
-          p.text(`${Math.round(ratio * 100)}%`, zone.x + 4, zone.y + 4);
+          p.text(`${modeForZone === 'presence' ? 'P' : 'M'} ${Math.round(ratio * 100)}%`, zone.x + 4, zone.y + 4);
 
           if (zone.soundId) {
             p.textAlign(p.RIGHT, p.TOP);
@@ -709,7 +818,7 @@ export class P5EngineAdapter {
       };
 
       this.commandSetZones = (nextZones) => {
-        zones = nextZones.map((zone, index) => ({ ...zone, id: index, overdub: zone.overdub ?? true }));
+        zones = nextZones.map((zone, index) => normalizeZone(zone, index));
         saveZonesToLocalStorage();
         if (mode === MODE.PERFORMANCE) resetZoneMotionState();
       };
@@ -726,6 +835,7 @@ export class P5EngineAdapter {
           pan: 0,
           volume: 0.5,
           overdub: true,
+          stopOnLeave: false,
         }));
         saveZonesToLocalStorage();
       };
@@ -774,6 +884,13 @@ export class P5EngineAdapter {
         this.emitState({ movementThreshold: value });
       };
 
+      this.commandSetDefaultDetectionMode = (nextMode) => {
+        defaultDetectionMode = nextMode;
+        localStorage.setItem('default-detection-mode', nextMode);
+        if (mode === MODE.PERFORMANCE) resetZoneMotionState();
+        this.emitState({ defaultDetectionMode: nextMode });
+      };
+
       this.commandSetBackgroundSound = (soundId) => {
         if (backgroundSound) {
           backgroundSound.pause();
@@ -817,6 +934,19 @@ export class P5EngineAdapter {
       this.commandSetZoneOverdub = (index, overdub) => {
         if (!zones[index]) return;
         zones[index].overdub = overdub;
+        saveZonesToLocalStorage();
+      };
+
+      this.commandSetZoneDetectionMode = (index, nextMode) => {
+        if (!zones[index]) return;
+        zones[index].detectionMode = nextMode ?? undefined;
+        if (mode === MODE.PERFORMANCE) resetZoneMotionState();
+        saveZonesToLocalStorage();
+      };
+
+      this.commandSetZoneStopOnLeave = (index, enabled) => {
+        if (!zones[index]) return;
+        zones[index].stopOnLeave = enabled;
         saveZonesToLocalStorage();
       };
 
@@ -879,11 +1009,14 @@ export class P5EngineAdapter {
               baseSoundPlayers: soundPlayers.size,
               hasBackgroundSound: Boolean(backgroundSound),
               streamTrackCount: currentStream?.getTracks().length ?? 0,
+              presenceActiveZones: zonePresenceFlags.filter(Boolean).length,
+              defaultDetectionMode,
             }),
             setMode: (nextMode) => this.setMode(nextMode),
             setProcessResolution: (w, h) => this.setProcessResolution(w, h),
             setActiveZoneCount: (count) => this.setActiveZoneCount(count),
             setSelectedVideoDevice: (deviceId) => this.setSelectedVideoDevice(deviceId),
+            setDefaultDetectionMode: (nextMode) => this.setDefaultDetectionMode(nextMode),
             addSyntheticSounds: async (count) => {
               const clampedCount = Math.max(0, Math.floor(count));
               const files: File[] = Array.from({ length: clampedCount }, (_, index) => {
@@ -1094,6 +1227,7 @@ export class P5EngineAdapter {
         pan: 0,
         volume: 0.5,
         overdub: true,
+        stopOnLeave: false,
       } satisfies Zone;
     });
     this.commandSetZones?.(nextZones);
@@ -1125,6 +1259,10 @@ export class P5EngineAdapter {
     this.commandSetMovementThreshold?.(value);
   }
 
+  setDefaultDetectionMode(mode: DetectionMode): void {
+    this.commandSetDefaultDetectionMode?.(mode);
+  }
+
   setBackgroundSound(soundId: string | null): void {
     this.commandSetBackgroundSound?.(soundId);
   }
@@ -1147,6 +1285,14 @@ export class P5EngineAdapter {
 
   setZoneOverdub(index: number, overdub: boolean): void {
     this.commandSetZoneOverdub?.(index, overdub);
+  }
+
+  setZoneDetectionMode(index: number, mode: DetectionMode | null): void {
+    this.commandSetZoneDetectionMode?.(index, mode);
+  }
+
+  setZoneStopOnLeave(index: number, enabled: boolean): void {
+    this.commandSetZoneStopOnLeave?.(index, enabled);
   }
 
   async addSoundFiles(files: File[]): Promise<void> {

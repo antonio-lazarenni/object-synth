@@ -9,6 +9,8 @@ export enum ZONE_TYPE {
   SOUND = 'sound',
 }
 
+export type DetectionMode = 'motion' | 'presence';
+
 export interface SoundFile {
   id: string;
   name: string;
@@ -28,6 +30,8 @@ export interface Zone {
   pan?: number;
   volume?: number;
   overdub?: boolean;
+  detectionMode?: DetectionMode;
+  stopOnLeave?: boolean;
 }
 
 export interface ProcessResolution {
@@ -53,6 +57,7 @@ export interface EditorState {
   showFpsDisplay: boolean;
   imageFilterThreshold: number;
   movementThreshold: number;
+  defaultDetectionMode: DetectionMode;
   backgroundSoundId: string | null;
   backgroundVolume: number;
 }

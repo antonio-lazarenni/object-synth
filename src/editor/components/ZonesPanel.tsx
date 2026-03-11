@@ -1,25 +1,33 @@
-import type { SoundFile, Zone } from '../types';
+import type { DetectionMode, SoundFile, Zone } from '../types';
 
 type Props = {
   zones: Zone[];
   sounds: SoundFile[];
+  defaultDetectionMode: DetectionMode;
   onSetCount: (count: number) => void;
   onResetZones: () => void;
+  onSetDefaultDetectionMode: (mode: DetectionMode) => void;
   onSetZoneSound: (index: number, soundId: string) => void;
   onSetZonePan: (index: number, pan: number) => void;
   onSetZoneVolume: (index: number, volume: number) => void;
   onSetZoneOverdub: (index: number, overdub: boolean) => void;
+  onSetZoneDetectionMode: (index: number, mode: DetectionMode | null) => void;
+  onSetZoneStopOnLeave: (index: number, enabled: boolean) => void;
 };
 
 export const ZonesPanel = ({
   zones,
   sounds,
+  defaultDetectionMode,
   onSetCount,
   onResetZones,
+  onSetDefaultDetectionMode,
   onSetZoneSound,
   onSetZonePan,
   onSetZoneVolume,
   onSetZoneOverdub,
+  onSetZoneDetectionMode,
+  onSetZoneStopOnLeave,
 }: Props) => {
   return (
     <div className="space-y-3">
@@ -40,6 +48,17 @@ export const ZonesPanel = ({
         >
           Reset zones
         </button>
+        <label className="flex flex-col gap-1 text-sm">
+          Default detection
+          <select
+            className="rounded border border-emerald-900 bg-emerald-950 px-2 py-1"
+            value={defaultDetectionMode}
+            onChange={(event) => onSetDefaultDetectionMode(event.target.value as DetectionMode)}
+          >
+            <option value="motion">Motion</option>
+            <option value="presence">Presence</option>
+          </select>
+        </label>
       </div>
 
       <div className="space-y-3">
@@ -83,6 +102,35 @@ export const ZonesPanel = ({
                   value={zone.volume ?? 0.5}
                   onChange={(event) => onSetZoneVolume(index, Number(event.target.value))}
                 />
+              </label>
+            </div>
+            <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+              <label className="flex flex-col gap-1 text-sm">
+                Detection mode
+                <select
+                  className="rounded border border-emerald-900 bg-emerald-950 px-2 py-1"
+                  value={zone.detectionMode ?? 'default'}
+                  onChange={(event) =>
+                    onSetZoneDetectionMode(
+                      index,
+                      event.target.value === 'default'
+                        ? null
+                        : (event.target.value as DetectionMode)
+                    )
+                  }
+                >
+                  <option value="default">Default ({defaultDetectionMode})</option>
+                  <option value="motion">Motion</option>
+                  <option value="presence">Presence</option>
+                </select>
+              </label>
+              <label className="mt-5 flex items-center gap-2 text-sm md:mt-6">
+                <input
+                  type="checkbox"
+                  checked={zone.stopOnLeave ?? false}
+                  onChange={(event) => onSetZoneStopOnLeave(index, event.target.checked)}
+                />
+                Stop zone audio on leave
               </label>
             </div>
             <label className="mt-2 flex items-center gap-2 text-sm">

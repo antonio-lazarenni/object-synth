@@ -13,6 +13,7 @@ export const ActiveAreasTab = () => {
   const showFpsDisplay = useEditorStore((state) => state.showFpsDisplay);
   const imageFilterThreshold = useEditorStore((state) => state.imageFilterThreshold);
   const movementThreshold = useEditorStore((state) => state.movementThreshold);
+  const defaultDetectionMode = useEditorStore((state) => state.defaultDetectionMode);
   const zones = useEditorStore((state) => state.zones);
   const sounds = useEditorStore((state) => state.sounds);
 
@@ -39,12 +40,16 @@ export const ActiveAreasTab = () => {
       <ZonesPanel
         zones={zones}
         sounds={sounds}
+        defaultDetectionMode={defaultDetectionMode}
         onSetCount={editorActions.setActiveZoneCount}
         onResetZones={editorActions.resetZones}
+        onSetDefaultDetectionMode={editorActions.setDefaultDetectionMode}
         onSetZoneSound={editorActions.setZoneSound}
         onSetZonePan={editorActions.setZonePan}
         onSetZoneVolume={editorActions.setZoneVolume}
         onSetZoneOverdub={editorActions.setZoneOverdub}
+        onSetZoneDetectionMode={editorActions.setZoneDetectionMode}
+        onSetZoneStopOnLeave={editorActions.setZoneStopOnLeave}
       />
     </div>
   );

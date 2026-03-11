@@ -102,6 +102,8 @@ const collectSample = async (page, scenarioName, startedAt) => {
         createdObjectUrls: debug?.createdObjectUrls ?? null,
         revokedObjectUrls: debug?.revokedObjectUrls ?? null,
         activeZoneAudioPlayers: debug?.activeZoneAudioPlayers ?? null,
+        presenceActiveZones: debug?.presenceActiveZones ?? null,
+        defaultDetectionMode: debug?.defaultDetectionMode ?? null,
         baseSoundPlayers: debug?.baseSoundPlayers ?? null,
         streamTrackCount: debug?.streamTrackCount ?? null,
       };
@@ -145,6 +147,7 @@ const main = async () => {
     const ctx = mockCanvas.getContext('2d');
     let frame = 0;
     let motionEnabled = false;
+    let presenceEnabled = false;
     let rafId = 0;
 
     const paint = () => {
@@ -161,6 +164,9 @@ const main = async () => {
         ctx.beginPath();
         ctx.arc((frame * 5) % mockCanvas.width, (frame * 2) % mockCanvas.height, 24, 0, Math.PI * 2);
         ctx.fill();
+      } else if (presenceEnabled) {
+        ctx.fillStyle = '#0f0';
+        ctx.fillRect(280, 160, 100, 140);
       } else {
         ctx.fillStyle = '#666';
         ctx.fillRect(200, 180, 120, 120);
@@ -213,6 +219,9 @@ const main = async () => {
     window.__setSyntheticMotion = (enabled) => {
       motionEnabled = Boolean(enabled);
     };
+    window.__setSyntheticPresence = (enabled) => {
+      presenceEnabled = Boolean(enabled);
+    };
     window.__stopSyntheticMotion = () => {
       cancelAnimationFrame(rafId);
     };
@@ -238,6 +247,27 @@ const main = async () => {
         await page.evaluate(() => {
           window.__setSyntheticMotion(false);
           window.__objectSynthDebug?.setMode('performance');
+        });
+      },
+    })
+  );
+
+  scenarios.push(
+    await runScenario(page, {
+      name: 'presence-intermittent',
+      durationMs: SHORT_SCENARIO_MS,
+      setup: async () => {
+        await page.evaluate(async () => {
+          window.__setSyntheticMotion(false);
+          window.__setSyntheticPresence(false);
+          window.__objectSynthDebug?.setDefaultDetectionMode('presence');
+          window.__objectSynthDebug?.setMode('performance');
+          await new Promise((resolve) => setTimeout(resolve, 2500));
+          window.__setSyntheticPresence(true);
+          await new Promise((resolve) => setTimeout(resolve, 8000));
+          window.__setSyntheticPresence(false);
+          await new Promise((resolve) => setTimeout(resolve, 2500));
+          window.__setSyntheticPresence(true);
         });
       },
     })
