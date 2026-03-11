@@ -1,12 +1,14 @@
 {
   "name": "object-synth",
   "private": true,
-  "version": "2.0.1",
+  "version": "2.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && TAILWIND_DISABLE_OXIDE=1 vite build",
     "preview": "vite preview",
+    "perf:audit": "node scripts/perf/run-perf-audit.mjs",
+    "perf:audit:quick": "PERF_SHORT_SCENARIO_MS=10000 PERF_LONG_SCENARIO_MS=15000 node scripts/perf/run-perf-audit.mjs",
     "version:major": "pnpm version major --no-git-tag-version",
     "version:minor": "pnpm version minor --no-git-tag-version",
     "version:patch": "pnpm version patch --no-git-tag-version"
@@ -16,6 +18,8 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.4",
+    "daisyui": "^5.5.19",
+    "playwright": "^1.58.2",
     "tailwindcss": "^4.2.1",
     "typescript": "~5.7.2",
     "vite": "^6.1.0"

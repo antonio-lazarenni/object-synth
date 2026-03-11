@@ -14,34 +14,45 @@ export const ControlsTabs = () => {
   const isPerformanceMode = mode === MODE.PERFORMANCE;
 
   return (
-    <div className="space-y-3 rounded-lg bg-emerald-900/40 p-3">
-      <ModeToggle mode={mode} onChange={editorActions.setMode} />
-      <div className="flex gap-2">
-        <button
-          className={`rounded px-3 py-1 text-sm ${
-            activeTab === 'active-areas' ? 'bg-emerald-700' : 'bg-emerald-950'
-          } ${isPerformanceMode ? 'cursor-not-allowed opacity-60' : ''}`}
-          onClick={() => setActiveTab('active-areas')}
-          disabled={isPerformanceMode}
-          type="button"
-        >
-          Active Areas
-        </button>
-        <button
-          className={`rounded px-3 py-1 text-sm ${
-            activeTab === 'sound-library' ? 'bg-emerald-700' : 'bg-emerald-950'
-          } ${isPerformanceMode ? 'cursor-not-allowed opacity-60' : ''}`}
-          onClick={() => setActiveTab('sound-library')}
-          disabled={isPerformanceMode}
-          type="button"
-        >
-          Sound Library
-        </button>
-      </div>
+    <div className="card border border-base-300 bg-base-100/90 shadow-xl">
+      <div className="card-body gap-4 p-3 md:p-4 lg:gap-5 lg:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="card-title">Control Dashboard</h2>
+          <div className="flex items-center gap-2">
+            <span className={`badge ${isPerformanceMode ? 'badge-warning' : 'badge-success'}`}>
+              {isPerformanceMode ? 'Performance mode' : 'Edit mode'}
+            </span>
+            {isPerformanceMode ? <span className="badge badge-outline">Controls locked</span> : null}
+          </div>
+        </div>
 
-      <fieldset disabled={isPerformanceMode} className={isPerformanceMode ? 'opacity-60' : ''}>
-        {activeTab === 'active-areas' ? <ActiveAreasTab /> : <SoundLibraryTab />}
-      </fieldset>
+        <ModeToggle mode={mode} onChange={editorActions.setMode} />
+
+        <div role="tablist" className="tabs tabs-boxed bg-base-200 p-1">
+          <button
+            role="tab"
+            className={`tab h-10 flex-1 text-sm md:h-11 ${activeTab === 'active-areas' ? 'tab-active' : ''}`}
+            onClick={() => setActiveTab('active-areas')}
+            disabled={isPerformanceMode}
+            type="button"
+          >
+            Active Areas
+          </button>
+          <button
+            role="tab"
+            className={`tab h-10 flex-1 text-sm md:h-11 ${activeTab === 'sound-library' ? 'tab-active' : ''}`}
+            onClick={() => setActiveTab('sound-library')}
+            disabled={isPerformanceMode}
+            type="button"
+          >
+            Sound Library
+          </button>
+        </div>
+
+        <fieldset disabled={isPerformanceMode} className={`space-y-3 md:space-y-4 ${isPerformanceMode ? 'opacity-60' : ''}`}>
+          {activeTab === 'active-areas' ? <ActiveAreasTab /> : <SoundLibraryTab />}
+        </fieldset>
+      </div>
     </div>
   );
 };
