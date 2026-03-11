@@ -8,6 +8,9 @@ jobs:
   perf-baseline:
     runs-on: ubuntu-latest
     continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,6 +49,45 @@ jobs:
 
       - name: Run perf audit (quick)
         run: PERF_BASE_URL="http://127.0.0.1:4173/object-synth/" pnpm perf:audit:quick
+
+      - name: Prepare perf PR comment
+        if: always()
+        run: |
+          mkdir -p perf-artifacts
+          shopt -s nullglob
+          report_files=(perf-artifacts/perf-baseline-*.md)
+          report_path=""
+          if ((${#report_files[@]})); then
+            IFS=$'\n' sorted=($(printf '%s\n' "${report_files[@]}" | sort))
+            report_path="${sorted[${#sorted[@]}-1]}"
+          fi
+
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          short_sha="${GITHUB_SHA::7}"
+          comment_path="perf-artifacts/perf-pr-comment.md"
+
+          {
+            echo "## Perf Baseline (quick)"
+            echo
+            echo "- Run: [#${GITHUB_RUN_NUMBER}](${run_url})"
+            echo "- Commit: \`${short_sha}\`"
+            echo "- Base URL: \`http://127.0.0.1:4173/object-synth/\`"
+            echo
+            if [[ -n "${report_path}" && -f "${report_path}" ]]; then
+              awk 'NR<=220{print} NR==221{print ""; print "_Truncated in PR comment. Full report is available in workflow artifacts._"; exit}' "${report_path}"
+            else
+              echo "Perf report was not generated in this run."
+              echo
+              echo "Check workflow logs and the uploaded \`perf-baseline-artifacts\` artifact for diagnostics."
+            fi
+          } > "${comment_path}"
+
+      - name: Comment perf results on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: perf-baseline-quick
+          path: perf-artifacts/perf-pr-comment.md
 
       - name: Upload perf artifacts
         if: always()
