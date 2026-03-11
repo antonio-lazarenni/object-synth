@@ -1,0 +1,55 @@
+name: Perf Baseline (Non-blocking)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  perf-baseline:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --only-shell chromium
+
+      - name: Start app
+        run: pnpm dev --host 127.0.0.1 --port 4173 > /tmp/object-synth-dev.log 2>&1 &
+
+      - name: Wait for app
+        run: |
+          for i in {1..60}; do
+            if curl -fsS "http://127.0.0.1:4173/object-synth/" >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "App did not start in time"
+          cat /tmp/object-synth-dev.log || true
+          exit 1
+
+      - name: Run perf audit (quick)
+        run: PERF_BASE_URL="http://127.0.0.1:4173/object-synth/" pnpm perf:audit:quick
+
+      - name: Upload perf artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-baseline-artifacts
+          path: perf-artifacts/

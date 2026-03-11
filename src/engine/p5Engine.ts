@@ -11,12 +11,32 @@ import {
 const RESIZE_SPEED = 10;
 const PIXEL_DIFF_THRESHOLD_SCALE = 100;
 const MIN_ACTIVE_FRAMES = 2;
+const PERF_DEBUG_STORAGE_KEY = 'object-synth-perf-debug';
 
 declare global {
   interface Window {
     showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
     audioContext?: AudioContext;
     webkitAudioContext?: typeof AudioContext;
+    __objectSynthDebug?: {
+      snapshot: () => {
+        fps: number;
+        detectMotionMsAvg: number;
+        drawMsAvg: number;
+        createdObjectUrls: number;
+        revokedObjectUrls: number;
+        activeZoneAudioPlayers: number;
+        baseSoundPlayers: number;
+        hasBackgroundSound: boolean;
+        streamTrackCount: number;
+      };
+      setMode: (mode: MODE) => void;
+      setProcessResolution: (w: number, h: number) => void;
+      setActiveZoneCount: (count: number) => void;
+      setSelectedVideoDevice: (deviceId: string | null) => Promise<void>;
+      addSyntheticSounds: (count: number) => Promise<void>;
+      resetSoundLibrary: () => Promise<void>;
+    };
   }
 
   interface HTMLAudioElement {
@@ -46,6 +66,7 @@ type EngineCallbacks = {
 
 export class P5EngineAdapter {
   private p5Instance: p5 | null = null;
+  private teardownCurrent: (() => void) | null = null;
 
   private callbacks: EngineCallbacks;
 
@@ -107,6 +128,7 @@ export class P5EngineAdapter {
       let movementThreshold = this.state.movementThreshold;
 
       let prevGray: Uint8Array | null = null;
+      let currGray = new Uint8Array(0);
       let zoneActiveCounts = new Uint8Array(0);
       let zoneMovementFlags: boolean[] = [];
       let zoneMotionRatios = new Float32Array(0);
@@ -131,6 +153,62 @@ export class P5EngineAdapter {
       const DB_VERSION = 1;
       let db: IDBDatabase | null = null;
       let dbInitPromise: Promise<void> | null = null;
+      let createdObjectUrls = 0;
+      let revokedObjectUrls = 0;
+      let detectMotionMsAvg = 0;
+      let drawMsAvg = 0;
+      let mediaDeviceListenerAttached = false;
+      const perfDebugEnabled =
+        localStorage.getItem(PERF_DEBUG_STORAGE_KEY) === 'true' ||
+        new URLSearchParams(window.location.search).get('perfDebug') === '1';
+
+      const createTrackedObjectUrl = (blob: Blob): string => {
+        createdObjectUrls += 1;
+        return URL.createObjectURL(blob);
+      };
+
+      const revokeTrackedObjectUrl = (url: string | undefined): void => {
+        if (!url) return;
+        URL.revokeObjectURL(url);
+        revokedObjectUrls += 1;
+      };
+
+      const disconnectAudioGraph = (audio: HTMLAudioElement): void => {
+        try {
+          audio.sourceNode?.disconnect();
+          audio.pannerNode?.disconnect();
+        } catch {
+          // no-op: nodes may already be disconnected.
+        }
+      };
+
+      const clearZoneTransientAudio = () => {
+        zoneActiveAudioPlayers.forEach((players) => {
+          players.forEach((audio) => {
+            audio.pause();
+            disconnectAudioGraph(audio);
+          });
+          players.clear();
+        });
+        zonePlayheadAudio = zonePlayheadAudio.map(() => null);
+      };
+
+      const cleanupAllSounds = () => {
+        clearZoneTransientAudio();
+        if (backgroundSound) {
+          backgroundSound.pause();
+          disconnectAudioGraph(backgroundSound);
+          backgroundSound = null;
+        }
+        soundLibrary.forEach((sound) => revokeTrackedObjectUrl(sound.url));
+        soundPlayers.forEach((audio) => {
+          audio.pause();
+          disconnectAudioGraph(audio);
+        });
+        soundPlayers.clear();
+        soundLibrary = [];
+        backgroundSoundId = null;
+      };
 
       const saveZonesToLocalStorage = () => {
         localStorage.setItem('object-synth-zones', JSON.stringify(zones));
@@ -334,7 +412,7 @@ export class P5EngineAdapter {
               try {
                 const isLegacyArrayBuffer = sound.data instanceof ArrayBuffer;
                 const blob = sound.data instanceof Blob ? sound.data : new Blob([sound.data], { type: sound.type });
-                const url = URL.createObjectURL(blob);
+                const url = createTrackedObjectUrl(blob);
                 const audio = new Audio(url);
                 await new Promise((audioResolve, audioReject) => {
                   audio.addEventListener('loadeddata', audioResolve, { once: true });
@@ -365,8 +443,10 @@ export class P5EngineAdapter {
         const soundIndex = soundLibrary.findIndex((s) => s.id === soundId);
         if (soundIndex === -1) return;
         const sound = soundLibrary[soundIndex];
-        if (sound.url) URL.revokeObjectURL(sound.url);
-        soundPlayers.get(soundId)?.pause();
+        revokeTrackedObjectUrl(sound.url);
+        const existingPlayer = soundPlayers.get(soundId);
+        existingPlayer?.pause();
+        if (existingPlayer) disconnectAudioGraph(existingPlayer);
         soundPlayers.delete(soundId);
         soundLibrary.splice(soundIndex, 1);
         await deleteSoundFromDB(soundId);
@@ -382,7 +462,7 @@ export class P5EngineAdapter {
         const soundId = `sound-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
         try {
           const blob = file.slice(0, file.size, file.type);
-          const url = URL.createObjectURL(blob);
+          const url = createTrackedObjectUrl(blob);
           const audio = new Audio(url);
           await new Promise((resolve, reject) => {
             audio.addEventListener('loadeddata', resolve, { once: true });
@@ -417,6 +497,14 @@ export class P5EngineAdapter {
         if (currentStream) {
           currentStream.getTracks().forEach((track) => track.stop());
           currentStream = null;
+        }
+        if (webcamCapture) {
+          try {
+            (webcamCapture as any).remove?.();
+          } catch {
+            // no-op: best-effort cleanup for capture element
+          }
+          webcamCapture = null;
         }
       };
 
@@ -495,7 +583,10 @@ export class P5EngineAdapter {
         const pix = processBuffer.pixels;
         if (!pix || pix.length === 0) return;
 
-        const currGray = new Uint8Array(processWidth * processHeight);
+        const pixelCount = processWidth * processHeight;
+        if (currGray.length !== pixelCount) {
+          currGray = new Uint8Array(pixelCount);
+        }
         for (let y = 0; y < processHeight; y++) {
           for (let x = 0; x < processWidth; x++) {
             const idx = (x + y * processWidth) * 4;
@@ -504,7 +595,7 @@ export class P5EngineAdapter {
         }
 
         if (!prevGray) {
-          prevGray = currGray;
+          prevGray = currGray.slice();
           return;
         }
         const previousGray = prevGray;
@@ -544,7 +635,7 @@ export class P5EngineAdapter {
           }
         });
 
-        prevGray = currGray;
+        prevGray = currGray.slice();
       };
 
       const getZonePlayheadProgress = (zoneIndex: number): number => {
@@ -652,6 +743,13 @@ export class P5EngineAdapter {
         processHeight = h;
         localStorage.setItem('process-width', String(w));
         localStorage.setItem('process-height', String(h));
+        if (processBuffer) {
+          try {
+            (processBuffer as any).remove?.();
+          } catch {
+            // no-op: depends on p5 version internals.
+          }
+        }
         processBuffer = p.createGraphics(w, h);
         processBuffer.pixelDensity(1);
         if (mode === MODE.PERFORMANCE) resetZoneMotionState();
@@ -733,8 +831,7 @@ export class P5EngineAdapter {
 
       this.commandResetSoundLibrary = async () => {
         await ensureDBReady();
-        soundLibrary = [];
-        soundPlayers.clear();
+        cleanupAllSounds();
         await deleteAllSoundsFromDB();
         emitSounds();
       };
@@ -763,11 +860,68 @@ export class P5EngineAdapter {
         if (navigator.mediaDevices) {
           if (typeof (navigator.mediaDevices as any).addEventListener === 'function') {
             (navigator.mediaDevices as any).addEventListener('devicechange', refreshVideoDevices);
+            mediaDeviceListenerAttached = true;
           } else {
             navigator.mediaDevices.ondevicechange = () => {
               refreshVideoDevices();
             };
           }
+        }
+        if (perfDebugEnabled) {
+          window.__objectSynthDebug = {
+            snapshot: () => ({
+              fps: Number(p.frameRate().toFixed(2)),
+              detectMotionMsAvg: Number(detectMotionMsAvg.toFixed(3)),
+              drawMsAvg: Number(drawMsAvg.toFixed(3)),
+              createdObjectUrls,
+              revokedObjectUrls,
+              activeZoneAudioPlayers: zoneActiveAudioPlayers.reduce((sum, players) => sum + players.size, 0),
+              baseSoundPlayers: soundPlayers.size,
+              hasBackgroundSound: Boolean(backgroundSound),
+              streamTrackCount: currentStream?.getTracks().length ?? 0,
+            }),
+            setMode: (nextMode) => this.setMode(nextMode),
+            setProcessResolution: (w, h) => this.setProcessResolution(w, h),
+            setActiveZoneCount: (count) => this.setActiveZoneCount(count),
+            setSelectedVideoDevice: (deviceId) => this.setSelectedVideoDevice(deviceId),
+            addSyntheticSounds: async (count) => {
+              const clampedCount = Math.max(0, Math.floor(count));
+              const files: File[] = Array.from({ length: clampedCount }, (_, index) => {
+                const sampleRate = 16000;
+                const durationSec = 0.15;
+                const samples = Math.floor(sampleRate * durationSec);
+                const pcm = new Int16Array(samples);
+                for (let i = 0; i < samples; i++) {
+                  const t = i / sampleRate;
+                  pcm[i] = Math.sin(2 * Math.PI * 440 * t) * 32767 * 0.2;
+                }
+                const wavHeader = new ArrayBuffer(44);
+                const view = new DataView(wavHeader);
+                const writeStr = (offset: number, value: string) => {
+                  for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i));
+                };
+                writeStr(0, 'RIFF');
+                view.setUint32(4, 36 + pcm.byteLength, true);
+                writeStr(8, 'WAVE');
+                writeStr(12, 'fmt ');
+                view.setUint32(16, 16, true);
+                view.setUint16(20, 1, true);
+                view.setUint16(22, 1, true);
+                view.setUint32(24, sampleRate, true);
+                view.setUint32(28, sampleRate * 2, true);
+                view.setUint16(32, 2, true);
+                view.setUint16(34, 16, true);
+                writeStr(36, 'data');
+                view.setUint32(40, pcm.byteLength, true);
+                const blob = new Blob([wavHeader, pcm.buffer], { type: 'audio/wav' });
+                return new File([blob], `synthetic-${Date.now()}-${index}.wav`, { type: 'audio/wav' });
+              });
+              if (files.length > 0) {
+                await this.addSoundFiles(files);
+              }
+            },
+            resetSoundLibrary: async () => this.resetSoundLibrary(),
+          };
         }
       };
 
@@ -817,11 +971,15 @@ export class P5EngineAdapter {
       };
 
       p.draw = () => {
+        const drawStart = performance.now();
         p.background(220);
         if (mode === MODE.PERFORMANCE) {
           if (webcamCapture) {
             p.image(webcamCapture as unknown as p5.Image, 0, 0, p.width, p.height);
+            const detectStart = performance.now();
             detectZoneMotion();
+            const detectElapsed = performance.now() - detectStart;
+            detectMotionMsAvg = detectMotionMsAvg * 0.95 + detectElapsed * 0.05;
           }
           drawZoneMotionOverlay();
         } else {
@@ -863,13 +1021,54 @@ export class P5EngineAdapter {
           p.text(`${Math.round(p.frameRate())} FPS`, p.width - 8, 8);
           p.pop();
         }
+        const drawElapsed = performance.now() - drawStart;
+        drawMsAvg = drawMsAvg * 0.95 + drawElapsed * 0.05;
       };
+
+      const cleanupSketch = () => {
+        if (mediaDeviceListenerAttached && navigator.mediaDevices) {
+          try {
+            (navigator.mediaDevices as any).removeEventListener?.('devicechange', refreshVideoDevices);
+          } catch {
+            // no-op: legacy implementations may not support removeEventListener.
+          }
+          mediaDeviceListenerAttached = false;
+        }
+        if (navigator.mediaDevices && navigator.mediaDevices.ondevicechange) {
+          navigator.mediaDevices.ondevicechange = null;
+        }
+        stopCurrentStream();
+        cleanupAllSounds();
+        if (processBuffer) {
+          try {
+            (processBuffer as any).remove?.();
+          } catch {
+            // no-op: depends on p5 version internals.
+          }
+          processBuffer = null;
+        }
+        if (db) {
+          db.close();
+          db = null;
+          dbInitPromise = null;
+        }
+        if (window.audioContext && window.audioContext.state !== 'closed') {
+          window.audioContext.close().catch(() => undefined);
+          window.audioContext = undefined;
+        }
+        if (window.__objectSynthDebug) {
+          delete window.__objectSynthDebug;
+        }
+      };
+      this.teardownCurrent = cleanupSketch;
     };
 
     this.p5Instance = new p5(sketch, container);
   }
 
   destroy(): void {
+    this.teardownCurrent?.();
+    this.teardownCurrent = null;
     if (this.p5Instance) {
       this.p5Instance.remove();
       this.p5Instance = null;
