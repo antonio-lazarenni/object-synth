@@ -4,9 +4,10 @@ import { useEditorStore } from '../state';
 import { ActiveAreasTab } from './ActiveAreasTab';
 import { ModeToggle } from './ModeToggle';
 import { SoundLibraryTab } from './SoundLibraryTab';
+import { UserGuideTab } from './UserGuideTab';
 import { MODE } from '../types';
 
-type TabId = 'active-areas' | 'sound-library';
+type TabId = 'active-areas' | 'sound-library' | 'user-guide';
 
 export const ControlsTabs = () => {
   const [activeTab, setActiveTab] = useState<TabId>('active-areas');
@@ -47,11 +48,25 @@ export const ControlsTabs = () => {
           >
             Sound Library
           </button>
+          <button
+            role="tab"
+            className={`tab h-10 flex-1 text-sm md:h-11 ${activeTab === 'user-guide' ? 'tab-active' : ''}`}
+            onClick={() => setActiveTab('user-guide')}
+            type="button"
+          >
+            User Guide
+          </button>
         </div>
 
-        <fieldset disabled={isPerformanceMode} className={`space-y-3 md:space-y-4 ${isPerformanceMode ? 'opacity-60' : ''}`}>
-          {activeTab === 'active-areas' ? <ActiveAreasTab /> : <SoundLibraryTab />}
-        </fieldset>
+        {activeTab === 'user-guide' ? (
+          <div className="space-y-3 md:space-y-4">
+            <UserGuideTab />
+          </div>
+        ) : (
+          <fieldset disabled={isPerformanceMode} className={`space-y-3 md:space-y-4 ${isPerformanceMode ? 'opacity-60' : ''}`}>
+            {activeTab === 'active-areas' ? <ActiveAreasTab /> : <SoundLibraryTab />}
+          </fieldset>
+        )}
       </div>
     </div>
   );
